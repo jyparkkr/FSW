@@ -211,8 +211,6 @@ class Heuristic2(ContinualAlgorithm):
         data_len = len(targets)
         non_select_indexes = list(range(data_len))
         num_dict = {x:0 for x in targets.unique().cpu().numpy()}
-        print(f"{num_dict=}")
-        # for batch_idx, (inp, targ, t_id, *_) in enumerate(train_loader):
         for b in range(data_len):
             # inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
             loss_matrix = loss_matrix - self.params['alpha'] * forget_matrix
