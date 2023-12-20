@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-import copy
 
 from torch import nn
 from torch import optim
@@ -9,6 +8,10 @@ from cl_gym.algorithms import ContinualAlgorithm
 from cl_gym.algorithms.agem import AGEM
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
 from torch.nn.functional import relu, avg_pool2d
+import matplotlib.pyplot as plt
+
+import copy
+import os
 
 def bool2idx(arr):
     idx = list()
@@ -105,27 +108,23 @@ class Heuristic2(ContinualAlgorithm):
         device = self.params['device']
         criterion = self.prepare_criterion(task_id)
 
-        # 10 대신 받아오는걸로 바꿔야함
-        classwise_loss = {x:list() for x in range(10)}
-        classwise_bias_grad_dict = {x:list() for x in range(10)}
-        classwise_weight_grad_dict = {x:list() for x in range(10)}
+        classwise_loss = {x:list() for x in self.benchmark.class_idx}
+        classwise_bias_grad_dict = {x:list() for x in self.benchmark.class_idx}
+        classwise_weight_grad_dict = {x:list() for x in self.benchmark.class_idx}
 
         # Compute gradient for memory replay
         for batch_idx, (inp, targ, t_id, *_) in enumerate(self.episodic_memory_loader):
             # self.backbone.forward
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
-            # print(f"{inp.shape}")
-            # print(f"{targ=}")
-            # print(f"{targ[0].cpu().item()=}")
-
             pred, embeds = self.forward_embeds(inp)
             criterion.reduction = "none"
             loss = criterion(pred, targ.reshape(-1))
             criterion.reduction = "mean"
             
-            buffer_bias_grads = torch.autograd.grad(loss.sum(), pred)[0]
+            buffer_bias_grads = torch.autograd.grad(loss.mean(), pred)[0]
             buffer_bias_expand = torch.repeat_interleave(buffer_bias_grads, embeds.shape[1], dim=1)
             buffer_weight_grads = buffer_bias_expand * embeds.repeat(1, pred.shape[1])
+            # buffer_grads = torch.cat([buffer_bias_grads, buffer_weight_grads], dim=1)
 
             for i, e in enumerate(targ):
                 classwise_loss[e.cpu().item()].append(loss[i])
@@ -138,9 +137,10 @@ class Heuristic2(ContinualAlgorithm):
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
                                    num_workers=num_workers, pin_memory=True)[0]
         
-        # parameter 받아오는걸로 바꾸어야함
-        new_bias_grads = torch.empty((0, pred.shape[1]), device=device, dtype=torch.float32)
-        new_weight_grads = torch.empty((0, pred.shape[1]*embeds.shape[1]), device=device, dtype=torch.float32)
+        num_preds = pred.shape[1]
+        embeds_shape = embeds.shape[1]
+        new_bias_grads = torch.empty((0, num_preds), device=device, dtype=torch.float32)
+        new_weight_grads = torch.empty((0, num_preds*embeds_shape), device=device, dtype=torch.float32)
         for batch_idx, (inp, targ, t_id, *_) in enumerate(train_loader):
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
 
@@ -148,9 +148,10 @@ class Heuristic2(ContinualAlgorithm):
             criterion.reduction = "none"
             loss = criterion(pred, targ.reshape(-1))
             criterion.reduction = "mean"
-            current_bias_grads = torch.autograd.grad(loss.sum(), pred)[0]
-            current_bias_expand = torch.repeat_interleave(current_bias_grads, embeds.shape[1], dim=1)
-            current_weight_grads = current_bias_expand * embeds.repeat(1, pred.shape[1])
+
+            current_bias_grads = torch.autograd.grad(loss.mean(), pred)[0]
+            current_bias_expand = torch.repeat_interleave(current_bias_grads, embeds_shape, dim=1)
+            current_weight_grads = current_bias_expand * embeds.repeat(1, num_preds)
 
             for i, e in enumerate(targ):
                 classwise_loss[e.cpu().item()].append(loss[i])
@@ -167,12 +168,12 @@ class Heuristic2(ContinualAlgorithm):
             if len(v):
                 v1 = classwise_bias_grad_dict[k]
                 v2 = classwise_weight_grad_dict[k]
-                losses.append(torch.stack(v).mean(dim=0).view(1, -1))
-                bias_grads.append(torch.stack(v1).mean(dim=0).view(1, -1))
-                weight_grads.append(torch.stack(v2).mean(dim=0).view(1, -1))
+                losses.append(torch.stack(v).mean(dim=0).view(1, -1).detach().clone())
+                bias_grads.append(torch.stack(v1).mean(dim=0).view(1, -1).detach().clone())
+                weight_grads.append(torch.stack(v2).mean(dim=0).view(1, -1).detach().clone())
 
-        losses = torch.cat(losses, dim=0).view(1,-1)
         with torch.no_grad():
+            losses = torch.cat(losses, dim=0).view(1,-1)
             bias_grads = torch.cat(bias_grads, dim=0)
             weight_grads = torch.cat(weight_grads, dim=0)
 
@@ -180,25 +181,10 @@ class Heuristic2(ContinualAlgorithm):
             n_buffer_grads = F.normalize(buffer_grads, p=2, dim=1)
 
             new_grads = torch.cat((new_bias_grads, new_weight_grads), dim=1)
-            new_grads_origin = new_grads.clone()
             n_new_grads = F.normalize(new_grads, p=2, dim=1)
 
-            loss_matrix = losses.repeat(len(new_grads), 1).to(device)
-            loss_matrix_origin = loss_matrix.clone()
-            forget_matrix = torch.matmul(n_new_grads, torch.transpose(n_buffer_grads, 0, 1)).to(device)
-
-
-        # n_bias_grad = F.normalize(bias_grads, p=2, dim=1)
-        # n_weight_grads = F.normalize(weight_grads, p=2, dim=1)
-        print(f"{new_bias_grads.shape=}")
-        print(f"{new_weight_grads.shape=}")
-        print(f"{forget_matrix.shape=}")
-
-        # print(f"{bias_grads.shape}")
-        # print(f"{weight_grads.shape}")
-        # print(f"{buffer_grads.shape}")
-        # print(f"{torch.cat((n_bias_grad, n_weight_grads), dim=1)=}")
-        # print(f"{n_buffer_grads=}")
+            loss_matrix = losses.repeat(len(n_new_grads), 1)
+            forget_matrix = torch.matmul(n_new_grads, torch.transpose(n_buffer_grads, 0, 1))
 
         # current data selection
         accumulate_select_indexes = []
@@ -207,10 +193,13 @@ class Heuristic2(ContinualAlgorithm):
 
         targets = train_loader.dataset.targets \
             if hasattr(train_loader.dataset, "targets") else train_loader.dataset.dataset.targets
-        print(f"{targets.shape=}")
         data_len = len(targets)
         non_select_indexes = list(range(data_len))
         num_dict = {x:0 for x in targets.unique().cpu().numpy()}
+
+        # for debugging
+        classwise_loss = []
+
         for b in range(data_len):
             # inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
             loss_matrix = loss_matrix - self.params['alpha'] * forget_matrix
@@ -219,8 +208,8 @@ class Heuristic2(ContinualAlgorithm):
 
             select_ind = torch.argmin(loss_mean + loss_std, dim=0)
             accumulate_sum.append(copy.deepcopy(loss_mean[select_ind].item() + loss_std[select_ind].item()))
-            # print(f"{select_ind.item()=}")
-            # print(f"{targets[select_ind.item()]=}")
+            classwise_loss.append(loss_matrix[select_ind].view(-1).detach().clone().cpu().numpy())
+
             num_dict[targets[select_ind.item()].item()] += 1
 
             select_indexes.append(non_select_indexes[select_ind.item()])
@@ -233,15 +222,27 @@ class Heuristic2(ContinualAlgorithm):
             n_new_grads = torch.cat((n_new_grads[:select_ind.item()], n_new_grads[select_ind.item()+1:]))
             forget_matrix = torch.cat((forget_matrix[:select_ind.item()], forget_matrix[select_ind.item()+1:]))
 
+        # for debugging
+        save_path = f"./figs/alpha_{self.params['alpha']}"
+        os.makedirs(save_path, exist_ok=True)
+        plt.plot(accumulate_sum)
+        plt.savefig(f"{save_path}/tid_{task_id}_accumulate_loss.png")
+        plt.clf()
+
+        classwise_loss = np.array(classwise_loss).T
+        for i, e in enumerate(classwise_loss):
+            plt.plot(e, label=i)
+        plt.legend(loc="best")
+        plt.savefig(f"{save_path}/tid_{task_id}_classwise_loss.png")
+        plt.clf()
+
+
         best_ind = np.argmin(np.array(accumulate_sum))
-        print(f"{best_ind=}")
         select_curr_indexes = accumulate_select_indexes[best_ind]
         print(f"{len(select_curr_indexes)=}")
-        print(f"{len(accumulate_select_indexes)=}")
 
         select_curr_indexes = list(set(select_curr_indexes))
         self.benchmark.seq_indices_train[task_id] = select_curr_indexes
-        self.benchmark.seq_indices_test[task_id] = range(len(self.benchmark.tests[task_id]))
         
         num_workers = self.params.get('num_dataloader_workers', 0)
         return self.benchmark.load(task_id, self.params['batch_size_train'],
