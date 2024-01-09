@@ -96,15 +96,24 @@ class Heuristic3(Heuristic2):
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
+        inc_num = 2 # MNIST
+        # if current_set:
+        #     classwise_loss = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+        #     classwise_grad_dict = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+        # else:
+        #     classwise_loss = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+        #     classwise_grad_dict = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
         sensitive_loss = {x:list() for x in range(2)}
         sensitive_grad_dict = {x:list() for x in range(2)}
-        new_grads = None
-
+        new_grads, grads = None, None
+        
         for batch_idx, (inp, targ, t_id, *_) in enumerate(loader):
             # self.backbone.forward
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
             sen = _[0].to(device) # ADDED
             pred, embeds = self.forward_embeds(inp)
+            self.pred_shape = pred.shape[1]
+            self.embeds_shape = embeds.shape[1]
             criterion.reduction = "none"
             loss = criterion(pred, targ.reshape(-1))
             criterion.reduction = "mean"
@@ -114,7 +123,8 @@ class Heuristic3(Heuristic2):
             weight_grads = bias_expand * embeds.repeat(1, pred.shape[1])
             grads = torch.cat([bias_grads, weight_grads], dim=1)
 
-            for i, e in enumerate(sen):
+            for i, e in enumerate(targ):
+                # new_num+=1
                 sensitive_loss[e.cpu().item()].append(loss[i])
                 sensitive_grad_dict[e.cpu().item()].append(grads[i])
 
@@ -123,11 +133,15 @@ class Heuristic3(Heuristic2):
 
             self.backbone.zero_grad()
 
-        for x in range(2):
-            if len(sensitive_loss[x]) == 0:
-                del sensitive_loss[x]
-                del sensitive_grad_dict[x]
-        
+        # for x in self.benchmark.class_idx:
+        #     if len(classwise_loss[x]) == 0:
+        #         del classwise_loss[x]
+        #         del classwise_grad_dict[x]
+        # print(f"{new_num=}")
+            # new_grads = torch.empty((0, pred.shape[1]*(embeds.shape[1]+1)), device=device, dtype=torch.float32)
+            
+            # new_grads = torch.empty((0, self.pred_shape*(self.embeds_shape+1)), device=device, dtype=torch.float32)
+
         return sensitive_loss, sensitive_grad_dict, new_grads
     
     def get_loss_grad_all(self, task_id):
@@ -137,27 +151,37 @@ class Heuristic3(Heuristic2):
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
                                    num_workers=num_workers, pin_memory=True)[0]
         current_loss, current_grad_dict, new_grads = self.get_loss_grad(task_id, train_loader, current_set = True)
+        r_new_grads = new_grads[self.non_select_indexes]
         sensitive_loss.update(current_loss)
         sensitive_grad_dict.update(current_grad_dict)
 
         losses = []
         grads = []
-        for k, v in sensitive_loss.items():
-            v3 = sensitive_grad_dict[k]
-            losses.append(torch.stack(v).mean(dim=0).view(1, -1).detach().clone())
-            grads.append(torch.stack(v3).mean(dim=0).view(1, -1).detach().clone())
+        for k, v in classwise_loss.items():
+            v3 = classwise_grad_dict[k]
+            loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
+            grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
+            if loss_.shape[1] == 0:
+                loss_ = torch.zeros([1, 1]).to(self.params['device'])
+                grads_ = torch.zeros([1, self.pred_shape*(self.embeds_shape+1)]).to(self.params['device'])
+            losses.append(loss_)
+            grads.append(grads_)
+            # print(f"{k=}, {loss_.shape=}")
+            # print(f"{k=}, {grads_.shape=}")
 
         with torch.no_grad():
             losses = torch.cat(losses, dim=0).view(1,-1)
-            buffer_grads = torch.cat(grads, dim=0)
+            grads_all = torch.cat(grads, dim=0)
+            
+            # 
+            n_grads_all = F.normalize(grads_all, p=2, dim=1) # 4 * (weight&bias 차원수)
+            n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
-            n_buffer_grads = F.normalize(buffer_grads, p=2, dim=1)
-            n_new_grads = F.normalize(new_grads, p=2, dim=1)
+            loss_matrix = losses.repeat(len(n_r_new_grads), 1)
+            forget_matrix = torch.matmul(n_r_new_grads, torch.transpose(n_grads_all, 0, 1))
 
-            loss_matrix = losses.repeat(len(n_new_grads), 1)
-            forget_matrix = torch.matmul(n_new_grads, torch.transpose(n_buffer_grads, 0, 1))
 
-        return loss_matrix, forget_matrix, n_new_grads
+        return loss_matrix, forget_matrix
 
 
 
@@ -174,59 +198,63 @@ class Heuristic3(Heuristic2):
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
-        
-        loss_matrix, forget_matrix, n_new_grads = self.get_loss_grad_all(task_id)
-        print(f"{loss_matrix.shape=}")
+
+        # self.non_select_indexes = list(range(12000))
+        self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
+        loss_matrix, forget_matrix = self.get_loss_grad_all(task_id)
 
         # current data selection
         accumulate_select_indexes = []
         accumulate_sum = []
         select_indexes = []
+        
+        # for debug
+        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
+                                   num_workers=num_workers, pin_memory=True)[0]
+        targets = train_loader.dataset.targets \
+            if hasattr(train_loader.dataset, "targets") else train_loader.dataset.dataset.targets
+        num_dict = {x:0 for x in targets.unique().cpu().numpy()}
+        num_dict_list = {x:list() for x in targets.unique().cpu().numpy()}
 
-        # targets = train_loader.dataset.targets \
-        #     if hasattr(train_loader.dataset, "targets") else train_loader.dataset.dataset.targets
         # data_len = len(targets)
         data_len = len(loss_matrix)
-        non_select_indexes = list(range(data_len))
 
         # for debugging
         classwise_loss = []
 
         for b in range(data_len-1):
             # inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
+            print(f"{loss_matrix.shape=}")
             loss_matrix = loss_matrix - self.params['alpha'] * forget_matrix
             loss_mean = torch.mean(loss_matrix, dim=1, keepdim=True)
             loss_std = torch.std(loss_matrix, dim=1, keepdim=True)
 
-            loss_1 = loss_matrix[:,1]
-
-            # select_ind = torch.argmin(loss_mean + loss_std, dim=0)
-            select_ind = torch.argmin(loss_1, dim=0)
-            accumulate_sum.append(copy.deepcopy(loss_1[select_ind].item()))
-            # accumulate_sum.append(copy.deepcopy(loss_mean[select_ind].item() + loss_std[select_ind].item()))
-
-
-
+            select_ind = torch.argmin(loss_mean + loss_std, dim=0)
+            accumulate_sum.append(copy.deepcopy(loss_mean[select_ind].item() + loss_std[select_ind].item()))
             classwise_loss.append(loss_matrix[select_ind].view(-1).detach().clone().cpu().numpy())
 
-            # num_dict[targets[select_ind.item()].item()] += 1
+            target_idx = self.benchmark.seq_indices_train[task_id][select_ind.item()]
+            print(f"{targets[target_idx].item()=}")
+            num_dict[targets[target_idx].item()] += 1
+            for k in num_dict:
+                num_dict_list[k].append(num_dict[k])
 
-            select_indexes.append(non_select_indexes[select_ind.item()])
+            select_indexes.append(self.non_select_indexes[select_ind.item()])
             accumulate_select_indexes.append(copy.deepcopy(select_indexes))
             
-            del self.benchmark.seq_indices_train[task_id][select_ind.item()]
-            del non_select_indexes[select_ind.item()]
+            # del self.benchmark.seq_indices_train[task_id][select_ind.item()]
+            del self.non_select_indexes[select_ind.item()]
 
-            # loss_matrix, forget_matrix = self.get_loss_grad_all(task_id)
+            loss_matrix, forget_matrix = self.get_loss_grad_all(task_id)
 
-            best_buffer_losses = loss_matrix[select_ind].view(1,-1)
-            loss_matrix = best_buffer_losses.repeat(len(n_new_grads)-1, 1)
+            # best_buffer_losses = loss_matrix[select_ind].view(1,-1)
+            # loss_matrix = best_buffer_losses.repeat(len(n_new_grads)-1, 1)
 
-            n_new_grads = torch.cat((n_new_grads[:select_ind.item()], n_new_grads[select_ind.item()+1:]))
-            forget_matrix = torch.cat((forget_matrix[:select_ind.item()], forget_matrix[select_ind.item()+1:]))
+            # n_new_grads = torch.cat((n_new_grads[:select_ind.item()], n_new_grads[select_ind.item()+1:]))
+            # forget_matrix = torch.cat((forget_matrix[:select_ind.item()], forget_matrix[select_ind.item()+1:]))
 
         # for debugging
-        save_path = f"./figs/sensitive_2/alpha_{self.params['alpha']}"
+        save_path = f"./figs/alpha_{self.params['alpha']}_v2"
         os.makedirs(save_path, exist_ok=True)
         plt.plot(accumulate_sum)
         plt.savefig(f"{save_path}/tid_{task_id}_accumulate_loss.png")
@@ -237,6 +265,12 @@ class Heuristic3(Heuristic2):
             plt.plot(e, label=i)
         plt.legend(loc="best")
         plt.savefig(f"{save_path}/tid_{task_id}_classwise_loss.png")
+        plt.clf()
+
+        for i, e in num_dict_list.items():
+            plt.plot(e, label=i)
+        plt.legend(loc="best")
+        plt.savefig(f"{save_path}/tid_{task_id}_class_num.png")
         plt.clf()
 
 
