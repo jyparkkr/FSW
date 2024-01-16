@@ -128,5 +128,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-minsu/outputs/*
-minsu/figs/*
+outputs/*
+figs/*
