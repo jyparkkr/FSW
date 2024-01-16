@@ -185,11 +185,7 @@ class Heuristic2(ContinualAlgorithm):
             n_grads_all = F.normalize(grads_all, p=2, dim=1) # 4 * (weight&bias 차원수)
             n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
-            loss_matrix = losses.repeat(len(n_r_new_grads), 1)
-            forget_matrix = torch.matmul(n_r_new_grads, torch.transpose(n_grads_all, 0, 1))
-
-
-        return loss_matrix, forget_matrix, n_r_new_grads
+        return losses, n_grads_all, n_r_new_grads
 
 
 
@@ -209,13 +205,17 @@ class Heuristic2(ContinualAlgorithm):
 
         # self.non_select_indexes = list(range(12000))
         self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
-        loss_matrix, forget_matrix, n_r_new_grads = self.get_loss_grad_all(task_id)
+        
+        losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id)
+        loss_matrix = losses.repeat(len(n_r_new_grads), 1)
+        forget_matrix = torch.matmul(n_r_new_grads, torch.transpose(n_grads_all, 0, 1))
+
 
         # current data selection
         accumulate_select_indexes = []
         accumulate_sum = []
         select_indexes = []
-        
+
         # for debug
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
                                    num_workers=num_workers, pin_memory=True)[0]
