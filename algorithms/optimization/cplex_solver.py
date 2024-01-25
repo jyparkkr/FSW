@@ -20,7 +20,11 @@ def LS_solver(A: np.array, b: np.array, binary = False):
     Return:
         x: np.array of solution
     """
+    print(f"{A.shape=}")
+    print(f"{b.shape=}")
     if A.shape[0] != b.shape[0]:
+        print(f"{A.shape=}")
+        print(f"{b.shape=}")
         raise NotImplementedError
     
     n, m = A.shape
