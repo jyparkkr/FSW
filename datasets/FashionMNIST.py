@@ -16,6 +16,74 @@ def tranform_on_idx(data, idx, transform):
     return data
 
 
+class FashionMNIST_modified(torchvision.datasets.FashionMNIST):
+    def __init__(self, root: str, 
+                 train: bool = True, 
+                 transform: Optional[Callable] = None, 
+                 target_transform: Optional[Callable] = None, 
+                 download: bool = False, 
+                 ) -> None:
+        super().__init__(root, train, transform, target_transform, download)
+
+    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+        img, target = super().__getitem__(index)
+        return img, target
+
+
+class SplitDataset_modified(SplitDataset):
+    def __init__(self, task_id, classes_per_split, dataset, class_idx = None):
+        self.inputs = []
+        self.targets = []
+        self.sample_weight = [] #ADDED
+        self.task_id = task_id
+        self.classes_per_split = classes_per_split
+        if class_idx is None:
+            if isinstance(dataset.targets, list):
+                target_classes = np.asarray(dataset.targets)
+            # for MNIST-like datasets where targets are tensors
+            else:
+                target_classes = dataset.targets.clone().detach().numpy()
+            self.class_idx = np.unique(target_classes)
+        else:
+            self.class_idx = class_idx
+        self.__build_split(dataset, task_id)
+        self.sample_weight = torch.ones_like(self.targets)
+
+    
+    def update_weight(self, sample_weight):
+        self.sample_weight = sample_weight
+
+
+    def __build_split(self, dataset, task_id):
+        start_class = (task_id-1) * self.classes_per_split
+        end_class = task_id * self.classes_per_split
+        # For CIFAR-like datasets in torchvision where targets are list
+        if isinstance(dataset.targets, list):
+            target_classes = np.asarray(dataset.targets)
+        # for MNIST-like datasets where targets are tensors
+        else:
+            target_classes = dataset.targets.clone().detach().numpy()
+        # target_classes = dataset.targets.clone().detach().numpy()
+        indices = np.zeros_like(target_classes)
+        for c in self.class_idx[start_class:end_class]:
+            indices = np.logical_or(indices, target_classes == c)
+        selected_indices = np.where(indices)[0]        
+        for i, idx in enumerate(selected_indices):
+            img, target = dataset[idx]
+            target = torch.tensor(target)
+            self.inputs.append(img)
+            self.targets.append(target)
+        
+        self.inputs = torch.stack(self.inputs)
+        self.targets = torch.stack(self.targets)
+
+    def __getitem__(self, index: int):
+        img, target = self.inputs[index], int(self.targets[index])
+        sample_weight = self.sample_weight[index]
+        return img, target, self.task_id, sample_weight
+
+
+
 class FashionMNIST(SplitMNIST):
     def __init__(self,
                  num_tasks: int,
@@ -25,7 +93,8 @@ class FashionMNIST(SplitMNIST):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
-                 random_class_idx=False):
+                 random_class_idx=False,
+                 ):
         if num_tasks > 5:
             raise ValueError("Split MNIST benchmark can have at most 5 tasks (i.e., 10 classes, 2 per task)")
         if task_input_transforms is None:
@@ -43,17 +112,21 @@ class FashionMNIST(SplitMNIST):
                          per_task_subset_examples, task_input_transforms, task_target_transforms)
 
 
+    def update_sample_weight(self, task, sample_weight):
+        self.trains[task].update_weight(sample_weight)
+
+
     def __load_fashion_mnist(self):
         transforms = self.task_input_transforms[0]
-        self.fashion_mnist_train = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.fashion_mnist_test = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.fashion_mnist_train = FashionMNIST_modified(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
+        self.fashion_mnist_test = FashionMNIST_modified(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
         
 
     def load_datasets(self):
         self.__load_fashion_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset(task, 2, self.fashion_mnist_train)
-            self.tests[task] = SplitDataset(task, 2, self.fashion_mnist_test)
+            self.trains[task] = SplitDataset_modified(task, 2, self.fashion_mnist_train)
+            self.tests[task] = SplitDataset_modified(task, 2, self.fashion_mnist_test)
 
 
     def sample_uniform_class_indices(self, dataset, start_class_idx, end_class_idx, num_samples) -> List:
