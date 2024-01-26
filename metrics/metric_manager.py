@@ -7,7 +7,7 @@ from cl_gym.utils.metrics import ContinualMetric, PerformanceMetric, ForgettingM
 
 from cl_gym.utils.callbacks.metric_manager import MetricCollector
 
-class PerformanceMetric(PerformanceMetric):
+class PerformanceMetric2(PerformanceMetric):
     def compute(self, current_task: int) -> float:
         if current_task < 1:
             raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
@@ -23,7 +23,8 @@ class PerformanceMetric(PerformanceMetric):
         data = self.data[1:,1:,-1]
         return np.mean([np.mean(i[np.nonzero(i)]) for i in data])
 
-class FairnessMetric(PerformanceMetric):
+
+class FairnessMetric(PerformanceMetric2):
     def __init__(self, 
                  num_tasks: int, 
                  acc_metric: PerformanceMetric = None,
@@ -56,7 +57,7 @@ class FairnessMetric(PerformanceMetric):
         return std
 
 
-class MetricCollector_modified(MetricCollector):
+class MetricCollector2(MetricCollector):
     """
     Collects metrics during the learning.
     This callback can support various metrics such as average accuracy/error, and average forgetting.
@@ -84,7 +85,7 @@ class MetricCollector_modified(MetricCollector):
 
     def _prepare_meters(self) -> Dict[str, ContinualMetric]:
         if self.eval_type == 'classification':
-            metrics = {'accuracy': PerformanceMetric(self.num_tasks, self.epochs_per_task),
+            metrics = {'accuracy': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'std': FairnessMetric(self.num_tasks, self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
