@@ -147,7 +147,7 @@ import torch
 import torchvision
 import numpy as np
 
-from datasets.MNIST import MNIST
+from datasets.mnist import MNIST
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
 from cl_gym.benchmarks.base import Benchmark, DynamicTransformDataset, SplitDataset
 

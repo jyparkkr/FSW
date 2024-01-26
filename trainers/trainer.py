@@ -8,7 +8,7 @@ from typing import Dict, Iterable, Optional
 import cl_gym as cl
 
 
-class ContinualTrainer_modified(cl.trainer.ContinualTrainer):
+class ContinualTrainer2(cl.trainer.ContinualTrainer):
     def __init__(self,
                  algorithm: ContinualAlgorithm,
                  params: dict,
@@ -28,7 +28,7 @@ class ContinualTrainer_modified(cl.trainer.ContinualTrainer):
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, (inp, targ, task_ids, sample_weight) in enumerate(train_loader):
                 if batch_idx == 0:
-                    print(f"{sample_weight=}")
+                    print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
                 self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), optimizer, criterion, sample_weight=sample_weight.to(device))

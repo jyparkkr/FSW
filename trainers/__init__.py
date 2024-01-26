@@ -1,6 +1,6 @@
-from .ContinualTrainer import ContinualTrainer_modified
-from .FairContinualTrainer import FairContinualTrainer
+from .trainer import ContinualTrainer2
+from .fair_trainer import FairContinualTrainer
 
-__all__ = ['ContinualTrainer_modified',
-           'FairContinualTrainer',
+__all__ = ['ContinualTrainer2',
+           'fair_trainer',
 ]

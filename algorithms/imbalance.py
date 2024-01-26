@@ -223,18 +223,19 @@ class Heuristic2(ContinualAlgorithm):
                                     num_workers=num_workers, pin_memory=True)[0]
 
         # self.non_select_indexes = list(range(12000))
-        self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
+        self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
         
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id)
         A, b = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads)
 
         from algorithms.optimization.cplex_solver import LS_solver
-        np_weight = torch.ones(A.shape[1])
-        # weight = LS_solver(A.cpu().detach().numpy(), b.view(-1).cpu().detach().numpy())
-        # np_weight = torch.tensor(np.array(weight))
+        np_weight = torch.ones(A.shape[1])*0.9
+        weight = LS_solver(A.cpu().detach().numpy(), b.view(-1).cpu().detach().numpy())
+        np_weight = torch.tensor(np.array(weight))
         # np_weight = torch.ones(A.shape[1])
         # np_weight = torch.ones(A.shape[1])*0.5
-        print(np_weight)
+        print(f"{np_weight=}")
+        print(f"{np_weight.shape=}")
 
         self.benchmark.update_sample_weight(task_id, np_weight)
 

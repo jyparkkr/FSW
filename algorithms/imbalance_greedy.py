@@ -204,7 +204,8 @@ class Heuristic2(ContinualAlgorithm):
                                     num_workers=num_workers, pin_memory=True)[0]
 
         # self.non_select_indexes = list(range(12000))
-        self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
+        # self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
+        self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
         
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id)
         loss_matrix = losses.repeat(len(n_r_new_grads), 1)
@@ -298,17 +299,24 @@ class Heuristic2(ContinualAlgorithm):
                                    num_workers=num_workers, pin_memory=True)[0]
 
 
-    def training_step(self, task_ids, inp, targ, optimizer, criterion, sensitive=None):
+    def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None):
         optimizer.zero_grad()
         pred = self.backbone(inp, task_ids)
+        criterion.reduction = "none"
         loss = criterion(pred, targ)
+        criterion.reduction = "mean"
+        if sample_weight is not None:
+            loss = loss*sample_weight
+            # print(f"{loss.shape=}")
+            # print(f"{sample_weight.shape=}")
+        loss = loss.mean()
         loss.backward()
         if task_ids[0] > 1:
             grad_batch = flatten_grads(self.backbone).detach().clone()
             optimizer.zero_grad()
 
             # get grad_ref
-            inp_ref, targ_ref, task_ids_ref, sensitive_ref = self.sample_batch_from_memory()
+            inp_ref, targ_ref, task_ids_ref, sample_weight_ref = self.sample_batch_from_memory()
             pred_ref = self.backbone(inp_ref, task_ids_ref)
             loss = criterion(pred_ref, targ_ref.reshape(len(targ_ref)))
             loss.backward()
