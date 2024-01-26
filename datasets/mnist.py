@@ -105,6 +105,12 @@ class MNIST(SplitMNIST):
             idx = self.seq_indices_train[task]
         weight = self.trains[task].sample_weight
         weight[idx] = sample_weight
+        # print(f"{weight=}")
+        # print(f"{weight.dtype=}")
+        # print(f"{weight.shape=}")
+        # print(f"{sample_weight=}")
+        # print(f"{sample_weight.dtype=}")
+        # print(f"{sample_weight.shape=}")
         self.trains[task].update_weight(weight)
 
     def precompute_memory_indices(self):
