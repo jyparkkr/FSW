@@ -231,7 +231,7 @@ class Heuristic2(ContinualAlgorithm):
         from algorithms.optimization.cplex_solver import LS_solver
         np_weight = torch.ones(A.shape[1])*0.9
         weight = LS_solver(A.cpu().detach().numpy(), b.view(-1).cpu().detach().numpy())
-        np_weight = torch.tensor(np.array(weight))
+        np_weight = torch.tensor(np.array(weight), dtype=torch.float32)
         # np_weight = torch.ones(A.shape[1])
         # np_weight = torch.ones(A.shape[1])*0.5
         print(f"{np_weight=}")
