@@ -161,31 +161,11 @@ class NoiseMNIST(SplitMNIST):
         self.train_sensitive_idx = train_sensitive_idx
         self.test_sensitive_idx = test_sensitive_idx
 
-
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
             self.trains[task] = FairSplitDataset(task, 2, self.mnist_train, class_idx = self.class_idx)
             self.tests[task] = FairSplitDataset(task, 2, self.mnist_test, class_idx = self.class_idx)
-
-
-    def sample_uniform_class_indices(self, dataset, start_class_idx, end_class_idx, num_samples) -> List:
-        target_classes = dataset.targets.clone().detach().numpy()
-        num_examples_per_class = self._calculate_num_examples_per_class(start_class_idx, end_class_idx, num_samples)
-        class_indices = []
-        # choose num_examples_per_class for each class
-        for i, cls_idx in enumerate(range(start_class_idx, end_class_idx+1)):
-            cls_number = self.class_idx[cls_idx]
-            target = (target_classes == cls_number)
-            #  maybe that class doesn't exist
-            num_candidate_examples = len(np.where(target == 1)[0])
-            if num_candidate_examples:
-                selected_indices = np.random.choice(np.where(target == 1)[0],
-                                                    min(num_candidate_examples, num_examples_per_class[i]),
-                                                    replace=False)
-                class_indices += list(selected_indices)
-        return class_indices
-
 
     def precompute_memory_indices(self):
         for task in range(1, self.num_tasks + 1):

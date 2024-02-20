@@ -7,6 +7,8 @@ from cl_gym.benchmarks.base import Benchmark, DynamicTransformDataset, SplitData
 from cl_gym.benchmarks.mnist import ContinualMNIST, SplitMNIST
 import numpy as np
 import torch
+from PIL import Image
+
 
 def tranform_on_idx(data, idx, transform):
     # if len(data) != len(idx):
@@ -66,6 +68,67 @@ class SplitDataset2(SplitDataset):
         return img, target, self.task_id, sample_weight
 
 
+class SplitDataset3(SplitDataset2):
+    def __init__(self, task_id, classes_per_split, dataset, class_idx = None):
+        self.inputs = []
+        self.targets = []
+        self.sensitive = [] # ADDED
+        self.task_id = task_id
+        self.classes_per_split = classes_per_split
+        if class_idx is None:
+            if isinstance(dataset.targets, list):
+                target_classes = np.asarray(dataset.targets)
+            # for MNIST-like datasets where targets are tensors
+            else:
+                target_classes = dataset.targets.clone().detach().numpy()
+            self.class_idx = np.unique(target_classes)
+        else:
+            self.class_idx = class_idx
+        self.__build_split(dataset, task_id)
+        self.sample_weight = torch.ones(self.__len__()) #ADDED - for dtype agreement
+
+    def __build_split(self, dataset, task_id):
+        start_class = (task_id-1) * self.classes_per_split
+        end_class = task_id * self.classes_per_split
+        # For CIFAR-like datasets in torchvision where targets are list
+        if isinstance(dataset.targets, list):
+            target_classes = np.asarray(dataset.targets)
+        # for MNIST-like datasets where targets are tensors
+        else:
+            target_classes = dataset.targets.clone().detach().numpy()
+        # target_classes = dataset.targets.clone().detach().numpy()
+        indices = np.zeros_like(target_classes)
+        for c in self.class_idx[start_class:end_class]:
+            indices = np.logical_or(indices, target_classes == c)
+        selected_indices = np.where(indices)[0]        
+        for i, idx in enumerate(selected_indices):
+            img, target, sensitive = dataset.data[idx], int(dataset.targets[idx]), int(dataset.sensitive[idx])
+            img = Image.fromarray(img.numpy(), mode="RGB")
+
+            if dataset.transform is not None:
+                img = dataset.transform(img)
+
+            if dataset.target_transform is not None:
+                target = dataset.target_transform(target)
+
+            target = torch.tensor(target)
+            sensitive = torch.tensor(sensitive)
+
+            self.inputs.append(img)
+            self.targets.append(target)
+            self.sensitive.append(sensitive)
+        
+        self.inputs = torch.stack(self.inputs)
+        self.targets = torch.stack(self.targets)
+        self.sensitive = torch.stack(self.sensitive)
+
+    def __getitem__(self, index: int):
+        img, target = self.inputs[index], int(self.targets[index])
+        sample_weight = self.sample_weight[index]
+        sensitive = self.sensitive[index]
+        return img, target, self.task_id, sample_weight, sensitive
+
+
 class MNIST(SplitMNIST):
     def __init__(self,
                  num_tasks: int,
@@ -77,6 +140,7 @@ class MNIST(SplitMNIST):
                  task_target_transforms: Optional[list] = None,
                  random_class_idx=False):
         self.random_class_idx = random_class_idx
+        self.classes_per_split = 2
         cls = np.arange(10)
         if random_class_idx:
             self.class_idx = np.random.choice(cls, len(cls), replace=False)
@@ -94,8 +158,8 @@ class MNIST(SplitMNIST):
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset2(task, 2, self.mnist_train, class_idx=self.class_idx)
-            self.tests[task] = SplitDataset2(task, 2, self.mnist_test, class_idx=self.class_idx)
+            self.trains[task] = SplitDataset2(task, self.classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset2(task, self.classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):
         """

@@ -1,11 +1,69 @@
 import os
 import numpy as np
-from typing import Optional, Callable, Dict, List
+from typing import Optional, Callable, Dict, List, Any
 
 from cl_gym.utils.callbacks.helpers import IntervalCalculator, Visualizer
 from cl_gym.utils.metrics import ContinualMetric, PerformanceMetric, ForgettingMetric
 
 from cl_gym.utils.callbacks.metric_manager import MetricCollector
+
+class GeneralMetric():
+    def __init__(self, num_tasks: int, epochs_per_task: Optional[int] = 1, agg = np.mean):
+        self.num_tasks = num_tasks
+        self.epochs_per_task = epochs_per_task
+        # data shape => [(task_learned+1) x (task_evaluated+1) x epoch_per task]
+        # The 0 index is reserved for 'initialization' metrics
+        self.agg = agg
+        self.data = np.zeros((num_tasks+1, num_tasks+1, epochs_per_task)).tolist()
+        self.dtype = None 
+
+    def update(self, task_learned: int, task_evaluated: int, value: Any, epoch: Optional[int] = 1):
+        if epoch < 1:
+            raise ValueError("Epoch number is 1-based")
+        if self.dtype is None:
+            self.dtype = type(value)
+        self.data[task_learned][task_evaluated][epoch-1] = value
+    
+    def compute(self, current_task: int) -> float:
+        if current_task < 1:
+            raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
+        if self.dtype is None:
+            raise NotImplementedError
+        else:
+            total = self.dtype()
+        for diff in [self.data[current_task][i][-1] for i in range(1,current_task+1)]:
+            if self.dtype == list:
+                total+=diff
+            elif self.dtype == dict:
+                total.update(diff)
+            else:
+                raise NotImplementedError
+        return self.agg(total)
+        
+    def compute_final(self) -> float:
+        return self.compute(self.num_tasks)
+
+    def compute_overall(self) -> float:
+        overall = list()
+        for t in range(1, self.num_tasks+1):
+            overall.append(self.compute(t))
+        return overall
+
+    def get_data(self, r = 3) -> list:
+        overall = list()
+        agg = self.agg
+        for t in range(1, self.num_tasks+1):
+            self.agg = lambda x:x
+            overall.append(self.compute(t))
+        self.agg = agg
+        return overall
+
+
+class ClasswiseAccuracy(GeneralMetric):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.agg = lambda x:x 
+
 
 class PerformanceMetric2(PerformanceMetric):
     def compute(self, current_task: int) -> float:
@@ -21,10 +79,10 @@ class PerformanceMetric2(PerformanceMetric):
     
     def compute_overall(self) -> float:
         data = self.data[1:,1:,-1]
-        return np.mean([np.mean(i[np.nonzero(i)]) for i in data])
+        return [np.mean(i[np.nonzero(i)]) for i in data]
 
 
-class FairnessMetric(PerformanceMetric2):
+class StdMetric(PerformanceMetric2):
     def __init__(self, 
                  num_tasks: int, 
                  acc_metric: PerformanceMetric = None,
@@ -86,7 +144,7 @@ class MetricCollector2(MetricCollector):
     def _prepare_meters(self) -> Dict[str, ContinualMetric]:
         if self.eval_type == 'classification':
             metrics = {'accuracy': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
-                    'std': FairnessMetric(self.num_tasks, self.epochs_per_task),
+                    'std': StdMetric(self.num_tasks, self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
             metrics['std'].update_acc_metric(metrics['accuracy'])
