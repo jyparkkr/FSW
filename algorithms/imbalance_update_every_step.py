@@ -5,7 +5,6 @@ from torch import nn
 from torch import optim
 from torch.nn import functional as F
 from cl_gym.algorithms import ContinualAlgorithm
-from cl_gym.algorithms.agem import AGEM
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
 from torch.nn.functional import relu, avg_pool2d
 import matplotlib.pyplot as plt
@@ -13,84 +12,9 @@ import matplotlib.pyplot as plt
 import copy
 import os
 
-def bool2idx(arr):
-    idx = list()
-    for i, e in enumerate(arr):
-        if e == 1:
-            idx.append(i)
-    return np.array(idx)
+from .imbalance import Heuristic2
 
-
-class Heuristic2(ContinualAlgorithm):
-    # Implementation is partially based on: https://github.com/MehdiAbbanaBennani/continual-learning-ogdplus
-    def __init__(self, backbone, benchmark, params, **kwargs):
-        self.backbone = backbone
-        self.benchmark = benchmark
-        self.params = params
-        
-        super(Heuristic2, self).__init__(backbone, benchmark, params, **kwargs)
-
-    def memory_indices_selection(self, task):
-        ## update self.benchmark.memory_indices_train[task] with len self.benchmark.per_task_memory_examples
-        
-        indices_train = np.arange(self.per_task_memory_examples)
-        # num_examples = self.benchmark.per_task_memory_examples
-        # indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls, end_cls, num_examples)
-        # # indices_test = self.sample_uniform_class_indices(self.tests[task], start_cls, end_cls, num_examples)
-        assert len(indices_train) == self.per_task_memory_examples
-        self.benchmark.memory_indices_train[task] = indices_train[:]
-
-    def update_episodic_memory(self):
-        # self.memory_indices_selection(self.current_task)
-        self.episodic_memory_loader, _ = self.benchmark.load_memory_joint(self.current_task,
-                                                                          batch_size=self.params['batch_size_memory'],
-                                                                          shuffle=True,
-                                                                          pin_memory=True)
-        self.episodic_memory_iter = iter(self.episodic_memory_loader)
-
-
-    def sample_batch_from_memory(self):
-        try:
-            batch = next(self.episodic_memory_iter)
-        except StopIteration:
-            self.episodic_memory_iter = iter(self.episodic_memory_loader)
-            batch = next(self.episodic_memory_iter)
-        
-        device = self.params['device']
-        inp, targ, task_id, *_ = batch
-        return inp.to(device), targ.to(device), task_id.to(device), _
-
-    def training_task_end(self):
-        """
-        Select what to store in the memory in this step
-        """
-        print("training_task_end")
-        if self.requires_memory:
-            self.update_episodic_memory()
-        self.current_task += 1
-
-    def forward_embeds(self, inp):
-        if self.params['dataset'] in ['MNIST', "FMNIST"]: #MLP
-            inp = inp.view(inp.shape[0], -1)
-            out = inp
-            for block in self.backbone.blocks:
-                embeds = out
-                out = block(out)
-            return out, embeds
-        else: #ResNet
-            bsz = inp.size(0)
-            shape = (bsz, self.backbone.dim, \
-                        self.backbone.input_shape[-2], self.backbone.input_shape[-1])
-            out = relu(self.backbone.bn1(self.backbone.conv1(inp.view(shape))))
-            out = self.backbone.layer1(out)
-            out = self.backbone.layer2(out)
-            out = self.backbone.layer3(out)
-            out = self.backbone.layer4(out)
-            out = avg_pool2d(out, 4)
-            embeds = out.view(out.size(0), -1)
-            out = self.backbone.linear(embeds)
-            return out, embeds
-
+class Heuristic1(Heuristic2):
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
