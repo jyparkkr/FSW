@@ -6,9 +6,7 @@ from .imbalance_greedy import Heuristic1 as GreedySelection
 from .sensitive import Heuristic3
 
 
-__all__ = ['AGEM_Sensitive',
-           'Finetune',
-           'Heuristic',
+__all__ = ['Heuristic',
            'Weighting',
            'GreedySelection'
            'Heuristic3',

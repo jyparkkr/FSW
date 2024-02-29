@@ -1,14 +1,35 @@
-from typing import Iterable, Optional
-from cl_gym.algorithms import ContinualAlgorithm
-from cl_gym.utils.callbacks import ContinualCallback
-from cl_gym.utils.loggers import Logger
 import torch
 from typing import Dict, Iterable, Optional
 import cl_gym as cl
-from .trainer import ContinualTrainer3
+from .base import ContinualTrainer1
 import numpy as np
 
-class FairContinualTrainer(ContinualTrainer3):
+class FairContinualTrainer(ContinualTrainer1):
+    def train_algorithm_on_task(self, task: int):
+        train_loader = self.algorithm.prepare_train_loader(task)
+        optimizer = self.algorithm.prepare_optimizer(task)
+        criterion = self.algorithm.prepare_criterion(task)
+        device = self.params['device']
+        for epoch in range(1, self.params['epochs_per_task']+1):
+            self.on_before_training_epoch()
+            self.tick('epoch')
+            self.algorithm.backbone.train()
+            self.algorithm.backbone = self.algorithm.backbone.to(device)
+            for batch_idx, items in enumerate(train_loader):
+                inp, targ, task_ids, sample_weight, sensitive_label, *_ = items
+                # if batch_idx == 0:
+                #     print(f"{sample_weight.to(device)=}")
+                self.on_before_training_step()
+                self.tick('step')
+                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
+                                             optimizer, criterion, sample_weight=sample_weight.to(device), \
+                                             sensitive_label=sensitive_label.to(device)) #ADDED
+                self.algorithm.training_step_end()
+                self.on_after_training_step()
+            self.algorithm.training_epoch_end()
+            self.on_after_training_epoch()
+        self.algorithm.training_task_end()
+
     def validate_algorithm_on_task(self, task: int, validate_on_train: bool = False) -> Dict[str, float]:
         self.algorithm.backbone.eval()
         device = self.params['device']
@@ -61,3 +82,29 @@ class FairContinualTrainer(ContinualTrainer3):
                 'accuracy_s0': get_avg(class_acc_s0), 'accuracy_s1': get_avg(class_acc_s1), \
                 'classwise_accuracy': class_acc}
         
+class FairContinualTrainer2(FairContinualTrainer):
+    def train_algorithm_on_task(self, task: int):
+        # train_loader = self.algorithm.prepare_train_loader(task)
+        optimizer = self.algorithm.prepare_optimizer(task)
+        criterion = self.algorithm.prepare_criterion(task)
+        device = self.params['device']
+        for epoch in range(1, self.params['epochs_per_task']+1):
+            self.on_before_training_epoch()
+            self.tick('epoch')
+            train_loader = self.algorithm.prepare_train_loader(task, epoch=epoch)
+            self.algorithm.backbone.train()
+            self.algorithm.backbone = self.algorithm.backbone.to(device)
+            for batch_idx, items in enumerate(train_loader):
+                inp, targ, task_ids, sample_weight, sensitive_label, *_ = items
+                # if batch_idx == 0:
+                #     print(f"{sample_weight.to(device)=}")
+                self.on_before_training_step()
+                self.tick('step')
+                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
+                                             optimizer, criterion, sample_weight=sample_weight.to(device), \
+                                             sensitive_label=sensitive_label.to(device)) #ADDED
+                self.algorithm.training_step_end()
+                self.on_after_training_step()
+            self.algorithm.training_epoch_end()
+            self.on_after_training_epoch()
+        self.algorithm.training_task_end()
