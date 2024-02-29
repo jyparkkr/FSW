@@ -103,12 +103,14 @@ class Heuristic3(Heuristic):
         for i, classwise_loss in enumerate(classwise_loss_all):
             for k, v in classwise_loss.items():
                 v3 = classwise_grad_all[i][k]
+                if len(v) == 0 :
+                    print(f"###classwise_loss of {k}, s={i} is missing###")
+                    raise NotImplementedError
+
                 loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
                 grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
                 losses.append(loss_)
                 grads.append(grads_)
-                # print(f"{k=}, {loss_.shape=}")
-                # print(f"{k=}, {grads_.shape=}")
 
         with torch.no_grad():
             losses = torch.cat(losses, dim=0).view(1,-1)
@@ -134,15 +136,65 @@ class Heuristic3(Heuristic):
         c = torch.zeros([n, 1], device=device)
         d = torch.zeros([grads_all.shape[0], n], device=device)
 
+        lc = torch.zeros([n, 1], device=device)
+        ld = torch.zeros([grads_all.shape[0], n], device=device)
+
         for j in range(n):
             c[j] = losses[j] - losses[n+j]
             d[:,j] = grads_all[:,j] - grads_all[:,n+j]
 
+            lc[j] = (losses[j] + losses[n+j])/2
+            ld[:,j] = (grads_all[:,j] + grads_all[:,n+j])/2
+
         d = alpha*d
         dg = torch.matmul(d.T, new_grads.T)
+
+        dg, c = dg/n, c/n
+
+        lmbd = self.params.get('lambda', 0.0)
+        lmbd_old = self.params.get('lambda_old', 0.0)
+
+        ld = alpha*ld
+        ldg = torch.matmul(ld.T, new_grads.T)
+
+        ldg, lc = lmbd*ldg, lmbd*lc
+
+        ldg[:n-2], ldg[n-2:] = lmbd_old*ldg[:n-2]/(n-2), ldg[n-2:]/2
+        lc[:n-2], lc[n-2:] = lmbd_old*lc[:n-2]/(n-2), lc[n-2:]/2
+
+        return torch.concatenate([dg, ldg], axis=0), torch.concatenate([c, lc], axis=0)
+        
+    def converter_old(self, losses, alpha, grads_all, new_grads):
+        """
+        losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
+        """
+        device = self.params['device']
+        losses = torch.transpose(losses, 0, 1)
+        grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
+        
+        n = len(losses)//2
+        # m, dim = new_grads.shape
+
+        c = torch.zeros([n, 1], device=device)
+        d = torch.zeros([grads_all.shape[0], n], device=device)
+
+        lc = torch.zeros([n, 1], device=device)
+        ld = torch.zeros([grads_all.shape[0], n], device=device)
+
+        for j in range(n):
+            c[j] = losses[j] - losses[n+j]
+            d[:,j] = grads_all[:,j] - grads_all[:,n+j]
+
+            lc[j] = (losses[j] + losses[n+j])/2
+            ld[:,j] = (grads_all[:,j] + grads_all[:,n+j])/2
+
+        d = alpha*d
+        dg = torch.matmul(d.T, new_grads.T)
+
+        dg, c = dg/n, c/n
         return dg, c
 
-    def prepare_train_loader(self, task_id):
+    def prepare_train_loader(self, task_id, epoch=0):
         solver = self.params.get('solver')
         if solver is None:
             agg = self.params['fairness_agg']
@@ -153,7 +205,7 @@ class Heuristic3(Heuristic):
             else:
                 raise NotImplementedError
             
-        return super().prepare_train_loader(task_id, solver=solver)
+        return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
 
     def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):
         optimizer.zero_grad()
@@ -166,10 +218,6 @@ class Heuristic3(Heuristic):
             # print(f"{loss.shape=}")
             # print(f"{sample_weight.shape=}")
         loss = loss.mean()
-        if task_ids[0] >= 3:
-            # print(f"{loss=}")
-            pass
-
         loss.backward()
         if task_ids[0] in [2, 3, 4, 5]:
             grad_batch = flatten_grads(self.backbone).detach().clone()
@@ -181,7 +229,7 @@ class Heuristic3(Heuristic):
             loss = criterion(pred_ref, targ_ref.reshape(len(targ_ref)))
             loss.backward()
             grad_ref = flatten_grads(self.backbone).detach().clone()
-            grad_batch += self.params['lambda']*grad_ref
+            grad_batch += self.params['tau']*grad_ref
 
             optimizer.zero_grad()
             self.backbone = assign_grads(self.backbone, grad_batch)

@@ -100,7 +100,7 @@ class Heuristic(ContinualAlgorithm):
     def training_step(self):
         raise NotImplementedError
 
-    def prepare_train_loader(self, task_id, solver=None):
+    def prepare_train_loader(self, task_id, solver=None, epoch=0):
         """
         Compute gradient for memory replay
         Compute individual sample gradient (against buffer data) for all current data
@@ -117,12 +117,16 @@ class Heuristic(ContinualAlgorithm):
         if self.params['alpha'] == 0:
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
-
-        # self.non_select_indexes = list(range(12000))
+        
+        if epoch <= 1:
+            self.original_seq_indices_train = self.benchmark.seq_indices_train[task_id]
+        else:
+            self.benchmark.seq_indices_train[task_id] = self.original_seq_indices_train
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
+
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id) 
         # n_grads_all: 4 * (weight&bias 차원수)
-        # n_r_new_grads: (후보수) * (weight&bias 차원수)
+        # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수)
 
         print(f"{losses=}")
         # print(f"{n_grads_all.mean(dim=1)=}")
@@ -148,12 +152,14 @@ class Heuristic(ContinualAlgorithm):
         updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[np.array(weight)>drop_threshold]
         self.benchmark.seq_indices_train[task_id] = updated_seq_indices.tolist()
         print(f"{len(updated_seq_indices)=}")
+        print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
+
 
         # for debugging
         os.makedirs(f"{self.params['output_dir']}/figs", exist_ok=True)
         plt.hist(weight, color = "green", alpha = 0.4, bins = 100, edgecolor="black")
         plt.axvline(drop_threshold, color='black', linestyle='dashed')
-        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_weight_distribution.png")
+        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_epoch_{epoch}_weight_distribution.png")
         plt.clf()
         
         return self.benchmark.load(task_id, self.params['batch_size_train'],

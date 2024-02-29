@@ -245,7 +245,7 @@ class Heuristic1(Heuristic2):
             loss = criterion(pred_ref, targ_ref.reshape(len(targ_ref)))
             loss.backward()
             grad_ref = flatten_grads(self.backbone).detach().clone()
-            grad_batch += self.params['lambda']*grad_ref
+            grad_batch += self.params['tau']*grad_ref
 
             optimizer.zero_grad()
             self.backbone = assign_grads(self.backbone, grad_batch)

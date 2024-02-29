@@ -561,7 +561,7 @@ class FormalPolyhedraModule(CombinatorialFreeModule):
 
     def indicator_relations_family(self):
         return LazyFamily(cartesian_product([self.indices(), self.indices()]),
-                          lambda uh: halfspace_inclusion_exclusion(uh[0], uh[1]),
+                          tau uh: halfspace_inclusion_exclusion(uh[0], uh[1]),
                           "inclusion_exclusion")
 
     def indicator_relations_submodule(self):
@@ -764,7 +764,7 @@ class FormalPolyhedraModule(CombinatorialFreeModule):
     def triangulation_morphism(self, codomain=None):
         if codomain is None:
             codomain = self
-        return self.module_morphism(on_basis=lambda m: self._poly_triang(codomain, m), codomain=codomain)
+        return self.module_morphism(on_basis=tau m: self._poly_triang(codomain, m), codomain=codomain)
 
 from sage.modules.with_basis.subquotient import SubmoduleWithBasis, QuotientModuleWithBasis
 
