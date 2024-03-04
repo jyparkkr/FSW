@@ -43,17 +43,17 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
     def validate_algorithm_on_task(self, task: int, validate_on_train: bool = False) -> Dict[str, float]:
         self.algorithm.backbone.eval()
         device = self.params['device']
-        classes_per_split = self.algorithm.benchmark.classes_per_split
+        num_classes_per_split = self.algorithm.benchmark.num_classes_per_split
         self.algorithm.backbone = self.algorithm.backbone.to(device)
         test_loss = 0
         total = 0
         class_acc = dict()
         if validate_on_train:
             eval_loader = self.algorithm.prepare_train_loader(task)
-            classes = self.algorithm.benchmark.class_idx[task*(classes_per_split-1):task*classes_per_split]
+            classes = self.algorithm.benchmark.class_idx[task*(num_classes_per_split-1):task*num_classes_per_split]
         else:
             eval_loader = self.algorithm.prepare_validation_loader(task)
-            classes = self.algorithm.benchmark.class_idx[:task*classes_per_split]
+            classes = self.algorithm.benchmark.class_idx[:task*num_classes_per_split]
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
             for (inp, targ, task_ids, sample_weight) in eval_loader:

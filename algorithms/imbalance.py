@@ -44,16 +44,19 @@ class Heuristic2(Heuristic):
             bias_expand = torch.repeat_interleave(bias_grads, embeds.shape[1], dim=1)
             weight_grads = bias_expand * embeds.repeat(1, pred.shape[1])
             grads = torch.cat([bias_grads, weight_grads], dim=1)
+            grads = grads.cpu()
 
             for i, e in enumerate(targ):
-                classwise_loss[e.cpu().item()].append(loss[i])
-                classwise_grad[e.cpu().item()].append(grads[i])
+                classwise_loss[e.cpu().item()].append(loss[i].detach().cpu()) # to prevent memory overflow
+                classwise_grad[e.cpu().item()].append(grads[i].detach().cpu())
 
             if current_set:
                 new_grads = grads if new_grads is None else torch.cat([new_grads, grads])
 
             self.backbone.zero_grad()
-
+            
+        if current_set:
+            new_grads = new_grads.detach().cpu()
         return classwise_loss, classwise_grad, new_grads
     
     def get_loss_grad_all(self, task_id):
@@ -72,8 +75,10 @@ class Heuristic2(Heuristic):
         grads = []
         for k, v in classwise_loss.items():
             v3 = classwise_grad[k]
-            loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
-            grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
+            # loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
+            # grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
+            loss_ = torch.stack(v).mean(dim=0).view(1, -1)
+            grads_ = torch.stack(v3).mean(dim=0).view(1, -1)
             losses.append(loss_)
             grads.append(grads_)
 

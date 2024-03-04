@@ -45,12 +45,12 @@ class FairMNIST(torchvision.datasets.MNIST):
             # return super().__getitem__(index), self.sensitive[index]
 
 class FairSplitDataset(SplitDataset):
-    def __init__(self, task_id, classes_per_split, dataset, class_idx = None):
+    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         self.inputs = []
         self.targets = []
         self.sensitives = [] #ADDED
         self.task_id = task_id
-        self.classes_per_split = classes_per_split
+        self.num_classes_per_split = num_classes_per_split
         if class_idx is None:
             if isinstance(dataset.targets, list):
                 target_classes = np.asarray(dataset.targets)
@@ -63,8 +63,8 @@ class FairSplitDataset(SplitDataset):
         self.__build_split(dataset, task_id)
 
     def __build_split(self, dataset, task_id):
-        start_class = (task_id-1) * self.classes_per_split
-        end_class = task_id * self.classes_per_split
+        start_class = (task_id-1) * self.num_classes_per_split
+        end_class = task_id * self.num_classes_per_split
         # For CIFAR-like datasets in torchvision where targets are list
         if isinstance(dataset.targets, list):
             target_classes = np.asarray(dataset.targets)

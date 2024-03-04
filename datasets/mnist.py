@@ -19,11 +19,11 @@ def tranform_on_idx(data, idx, transform):
 
 
 class SplitDataset2(SplitDataset):
-    def __init__(self, task_id, classes_per_split, dataset, class_idx = None):
+    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         self.inputs = []
         self.targets = []
         self.task_id = task_id
-        self.classes_per_split = classes_per_split
+        self.num_classes_per_split = num_classes_per_split
         if class_idx is None:
             if isinstance(dataset.targets, list):
                 target_classes = np.asarray(dataset.targets)
@@ -40,8 +40,8 @@ class SplitDataset2(SplitDataset):
         self.sample_weight = sample_weight
 
     def __build_split(self, dataset, task_id):
-        start_class = (task_id-1) * self.classes_per_split
-        end_class = task_id * self.classes_per_split
+        start_class = (task_id-1) * self.num_classes_per_split
+        end_class = task_id * self.num_classes_per_split
         # For CIFAR-like datasets in torchvision where targets are list
         if isinstance(dataset.targets, list):
             target_classes = np.asarray(dataset.targets)
@@ -69,12 +69,12 @@ class SplitDataset2(SplitDataset):
 
 
 class SplitDataset3(SplitDataset2):
-    def __init__(self, task_id, classes_per_split, dataset, class_idx = None):
+    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         self.inputs = []
         self.targets = []
         self.sensitive = [] # ADDED
         self.task_id = task_id
-        self.classes_per_split = classes_per_split
+        self.num_classes_per_split = num_classes_per_split
         if class_idx is None:
             if isinstance(dataset.targets, list):
                 target_classes = np.asarray(dataset.targets)
@@ -88,8 +88,8 @@ class SplitDataset3(SplitDataset2):
         self.sample_weight = torch.ones(self.__len__()) #ADDED - for dtype agreement
 
     def __build_split(self, dataset, task_id):
-        start_class = (task_id-1) * self.classes_per_split
-        end_class = task_id * self.classes_per_split
+        start_class = (task_id-1) * self.num_classes_per_split
+        end_class = task_id * self.num_classes_per_split
         # For CIFAR-like datasets in torchvision where targets are list
         if isinstance(dataset.targets, list):
             target_classes = np.asarray(dataset.targets)
@@ -140,7 +140,7 @@ class MNIST(SplitMNIST):
                  task_target_transforms: Optional[list] = None,
                  random_class_idx=False):
         self.random_class_idx = random_class_idx
-        self.classes_per_split = 2
+        self.num_classes_per_split = 2
         cls = np.arange(10)
         if random_class_idx:
             self.class_idx = np.random.choice(cls, len(cls), replace=False)
@@ -158,8 +158,8 @@ class MNIST(SplitMNIST):
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset2(task, self.classes_per_split, self.mnist_train, class_idx=self.class_idx)
-            self.tests[task] = SplitDataset2(task, self.classes_per_split, self.mnist_test, class_idx=self.class_idx)
+            self.trains[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):
         """
@@ -179,8 +179,8 @@ class MNIST(SplitMNIST):
 
     def precompute_memory_indices(self):
         for task in range(1, self.num_tasks + 1):
-            start_cls_idx = (task - 1) * 2
-            end_cls_idx = task * 2 - 1
+            start_cls_idx = (task - 1) * self.num_classes_per_split
+            end_cls_idx = task * self.num_classes_per_split - 1
             num_examples = self.per_task_memory_examples
             indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
             indices_test = self.sample_uniform_class_indices(self.tests[task], start_cls_idx, end_cls_idx, num_examples)
