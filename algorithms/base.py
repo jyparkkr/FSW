@@ -125,7 +125,7 @@ class Heuristic(ContinualAlgorithm):
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id) 
-        # n_grads_all: 4 * (weight&bias 차원수)
+        # n_grads_all: (class_num) * (weight&bias 차원수)
         # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수)
 
         print(f"{losses=}")
@@ -152,7 +152,8 @@ class Heuristic(ContinualAlgorithm):
         updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[np.array(weight)>drop_threshold]
         self.benchmark.seq_indices_train[task_id] = updated_seq_indices.tolist()
         print(f"{len(updated_seq_indices)=}")
-        print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
+        if hasattr(self.benchmark.trains[task_id], "sensitive"):
+            print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
 
 
         # for debugging

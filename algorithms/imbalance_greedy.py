@@ -31,7 +31,6 @@ class Heuristic1(Heuristic2):
         Compute individual sample gradient (against buffer data) for all current data
             loader로 불러와서 모든 output과 embedding을 저장
             gradient 계산 (W, b)
-        각 batch별 loss와 std를 가장 낮게 하는 (하나)의 sample만 취해서 학습에 사용
         Return train loader
         """
         num_workers = self.params.get('num_dataloader_workers', 0)

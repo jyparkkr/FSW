@@ -211,8 +211,8 @@ class BiasedMNIST(MNIST):
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset3(task, self.classes_per_split, self.mnist_train)
-            self.tests[task] = SplitDataset3(task, self.classes_per_split, self.mnist_test)
+            self.trains[task] = SplitDataset3(task, self.num_classes_per_split, self.mnist_train)
+            self.tests[task] = SplitDataset3(task, self.num_classes_per_split, self.mnist_test)
 
     def _modify_dataset(self, dataset, corr):
         sensitive = torch.zeros_like(dataset.targets)
