@@ -21,7 +21,7 @@ class Heuristic2(Heuristic):
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
-        inc_num = 2 # MNIST
+        inc_num = self.benchmark.num_classes_per_split # MNIST
         if current_set:
             classwise_loss = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
             classwise_grad = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
@@ -55,8 +55,6 @@ class Heuristic2(Heuristic):
 
             self.backbone.zero_grad()
             
-        if current_set:
-            new_grads = new_grads.detach().cpu()
         return classwise_loss, classwise_grad, new_grads
     
     def get_loss_grad_all(self, task_id):
@@ -87,7 +85,7 @@ class Heuristic2(Heuristic):
             grads_all = torch.cat(grads, dim=0)
             
             # class별로 변화량이 비슷하도록 normalize
-            n_grads_all = F.normalize(grads_all, p=2, dim=1) # 4 * (weight&bias 차원수)
+            n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
             n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
         return losses, n_grads_all, n_r_new_grads

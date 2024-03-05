@@ -33,7 +33,7 @@ class Heuristic3(Heuristic):
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
-        inc_num = 2 # MNIST
+        inc_num = self.benchmark.num_classes_per_split # MNIST
         if current_set:
             classwise_loss_s0 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
             classwise_grad_s0 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
@@ -65,13 +65,15 @@ class Heuristic3(Heuristic):
             sensitive = torch.ne(targ, sensitive_label)
             sensitive = sensitive.long()
 
+            grads = grads.cpu()
+
             for i, e in enumerate(targ):
                 if sensitive[i].cpu().item() == 0:
-                    classwise_loss_s0[e.cpu().item()].append(loss[i])
-                    classwise_grad_s0[e.cpu().item()].append(grads[i])
+                    classwise_loss_s0[e.cpu().item()].append(loss[i].detach().cpu())
+                    classwise_grad_s0[e.cpu().item()].append(grads[i].detach().cpu())
                 elif sensitive[i].cpu().item() == 1:
-                    classwise_loss_s1[e.cpu().item()].append(loss[i])
-                    classwise_grad_s1[e.cpu().item()].append(grads[i])
+                    classwise_loss_s1[e.cpu().item()].append(loss[i].detach().cpu())
+                    classwise_grad_s1[e.cpu().item()].append(grads[i].detach().cpu())
                 else:
                     raise NotImplementedError
 
@@ -107,8 +109,8 @@ class Heuristic3(Heuristic):
                     print(f"###classwise_loss of {k}, s={i} is missing###")
                     raise NotImplementedError
 
-                loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
-                grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
+                loss_ = torch.stack(v).mean(dim=0).view(1, -1)
+                grads_ = torch.stack(v3).mean(dim=0).view(1, -1)
                 losses.append(loss_)
                 grads.append(grads_)
 
@@ -117,7 +119,7 @@ class Heuristic3(Heuristic):
             grads_all = torch.cat(grads, dim=0)
             
             # class별로 변화량이 비슷하도록 normalize
-            n_grads_all = F.normalize(grads_all, p=2, dim=1) # 4 * (weight&bias 차원수)
+            n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
             n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
         return losses, n_grads_all, n_r_new_grads
@@ -126,7 +128,7 @@ class Heuristic3(Heuristic):
         """
         losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
         """
-        device = self.params['device']
+        device = 'cpu'
         losses = torch.transpose(losses, 0, 1)
         grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
         
@@ -168,7 +170,7 @@ class Heuristic3(Heuristic):
         """
         losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
         """
-        device = self.params['device']
+        device = 'cpu'
         losses = torch.transpose(losses, 0, 1)
         grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
         
