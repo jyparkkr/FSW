@@ -195,15 +195,14 @@ class BiasedMNIST(MNIST):
         super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
                          per_task_subset_examples, task_input_transforms, task_target_transforms, random_class_idx=random_class_idx)
 
+
     def __load_mnist(self):
         transforms = self.task_input_transforms[0]
         mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
         mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
 
-        # self._modify_dataset(mnist_train, 0.9)
-        self._modify_dataset(mnist_train, 0.8)
-        # self._modify_dataset(mnist_test, 0) # s0:s1 = 1:9
-        self._modify_dataset(mnist_test, 4/9) # s0:s1 = 5:5
+        self._modify_dataset(mnist_train, 0.9)
+        self._modify_dataset(mnist_test, 0.5) # s0:s1 = 5:5
 
         self.mnist_train = mnist_train
         self.mnist_test = mnist_test
@@ -214,9 +213,13 @@ class BiasedMNIST(MNIST):
             self.trains[task] = SplitDataset3(task, self.num_classes_per_split, self.mnist_train)
             self.tests[task] = SplitDataset3(task, self.num_classes_per_split, self.mnist_test)
 
-    def _modify_dataset(self, dataset, corr):
+    def _modify_dataset(self, dataset, s0_rate):
+        if s0_rate < 0.1:
+            print(f"{s0_rate=} which is below 0.1")
+            AssertionError
         sensitive = torch.zeros_like(dataset.targets)
         labels = dataset.targets
+        corr = (10*s0_rate - 1)/9
 
         old = dataset.data
         new = list()
@@ -285,8 +288,8 @@ class BiasedMNIST(MNIST):
             start_cls_idx = (task - 1) * 2
             end_cls_idx = task * 2 - 1
             num_examples = self.per_task_memory_examples
-            # indices_train = self.sample_fair_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
-            indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
+            indices_train = self.sample_fair_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
+            # indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
             indices_test = self.sample_fair_uniform_class_indices(self.tests[task], start_cls_idx, end_cls_idx, num_examples)
             # assert len(indices_train) == len(indices_test) == self.per_task_memory_examples
             assert len(indices_train) == self.per_task_memory_examples
