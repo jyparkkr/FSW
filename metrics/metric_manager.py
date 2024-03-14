@@ -144,7 +144,7 @@ class MetricCollector2(MetricCollector):
     def _prepare_meters(self) -> Dict[str, ContinualMetric]:
         if self.eval_type == 'classification':
             metrics = {'accuracy': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
-                    'std': StdMetric(self.num_tasks, self.epochs_per_task),
+                    'std': StdMetric(self.num_tasks, epochs_per_task = self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
             metrics['std'].update_acc_metric(metrics['accuracy'])

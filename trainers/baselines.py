@@ -8,7 +8,7 @@ from typing import Dict, Iterable, Optional
 import cl_gym as cl
 
 
-class ContinualTrainer1(cl.trainer.ContinualTrainer):
+class BaseContinualTrainer(cl.trainer.ContinualTrainer):
     def __init__(self,
                  algorithm: ContinualAlgorithm,
                  params: dict,
@@ -27,13 +27,13 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, sample_weight, *_ = items
+                inp, targ, task_ids, *_ = items
                 # if batch_idx == 0:
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
                 self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device))
+                                             optimizer, criterion)
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()
@@ -56,7 +56,8 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             classes = self.algorithm.benchmark.class_idx[:task*num_classes_per_split]
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
-            for (inp, targ, task_ids, sample_weight) in eval_loader:
+            for items in eval_loader:
+                inp, targ, task_ids, *_ = items
                 inp, targ, task_ids = inp.to(device), targ.to(device), task_ids.to(device)
                 # inp, targ, task_ids, sample_weight = inp.to(device), targ.to(device), task_ids.to(device), sample_weight.to(device)
                 pred = self.algorithm.backbone(inp, task_ids)
@@ -74,29 +75,3 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
         # cor, tot = np.array(list(class_acc.values())).sum(axis=0)
         std = 100.0 * np.std([cor/count for cor, count in class_acc.values()])
         return {'accuracy': avg, 'loss': test_loss, "std": std}
-    
-class ContinualTrainer2(ContinualTrainer1):
-    def train_algorithm_on_task(self, task: int):
-        # train_loader = self.algorithm.prepare_train_loader(task)
-        optimizer = self.algorithm.prepare_optimizer(task)
-        criterion = self.algorithm.prepare_criterion(task)
-        device = self.params['device']
-        for epoch in range(1, self.params['epochs_per_task']+1):
-            self.on_before_training_epoch()
-            self.tick('epoch')
-            train_loader = self.algorithm.prepare_train_loader(task, epoch=epoch) # modified
-            self.algorithm.backbone.train()
-            self.algorithm.backbone = self.algorithm.backbone.to(device)
-            for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, sample_weight, *_ = items
-                # if batch_idx == 0:
-                #     print(f"{sample_weight.to(device)=}")
-                self.on_before_training_step()
-                self.tick('step')
-                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device))
-                self.algorithm.training_step_end()
-                self.on_after_training_step()
-            self.algorithm.training_epoch_end()
-            self.on_after_training_epoch()
-        self.algorithm.training_task_end()

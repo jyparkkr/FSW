@@ -16,7 +16,6 @@ from algorithms.optimization import LS_solver
 import copy
 import os
 
-
 class Heuristic2(Heuristic):
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
@@ -108,12 +107,12 @@ class Heuristic2(Heuristic):
         dg = torch.matmul(d.T, new_grads.T)
         return dg, c
 
-    def prepare_train_loader(self, task_id):
+    def prepare_train_loader(self, task_id, epoch=0):
         solver = self.params.get('solver')
         if solver is None:
             solver = LS_solver
         print(f"{solver=}")
-        return super().prepare_train_loader(task_id, solver=solver)
+        return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
 
 
     def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive=None):
@@ -124,11 +123,12 @@ class Heuristic2(Heuristic):
         criterion.reduction = "mean"
         if sample_weight is not None:
             loss = loss*sample_weight
+            # print(f"{loss=}")
             # print(f"{loss.shape=}")
             # print(f"{sample_weight.shape=}")
         loss = loss.mean()
         loss.backward()
-        if task_ids[0] > 1:
+        if (task_ids[0] > 1) and self.params['tau']:
             grad_batch = flatten_grads(self.backbone).detach().clone()
             optimizer.zero_grad()
 

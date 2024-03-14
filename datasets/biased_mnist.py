@@ -258,6 +258,7 @@ class BiasedMNIST(MNIST):
         class_indices = []
         for i, cls_idx in enumerate(range(start_class_idx, end_class_idx+1)):
             cls_number = self.class_idx[cls_idx]
+            target = (target_classes == cls_number)
             num_sen_per_class = [0]*num_classes
             for cls in range(num_classes):
                 if cls == cls_number:
@@ -267,18 +268,54 @@ class BiasedMNIST(MNIST):
             # if memory_size can't be divided by num_class classes
             if sum(num_sen_per_class) < num_examples_per_class[i]:
                 diff = num_examples_per_class[i] - sum(num_sen_per_class)
-                while diff:
-                    diff -= 1
-                    num_sen_per_class[np.random.randint(0, num_classes)] += 1
+                # while diff:
+                #     # diff -= 1
+                #     # num_sen_per_class[np.random.randint(0, num_classes)] += 1
+                for i in np.random.choice(num_classes, diff, replace=False):
+                    num_sen_per_class[i]+=1
 
-            target = (target_classes == cls_number)
+            # For huge imbalance - lack of s = 1
+            avails = list()
             for j in range(num_classes):
                 sensitive = (sensitives == j)
                 avail = target * sensitive
                 num_candidate_examples = len(np.where(avail == 1)[0])
+                avails.append(num_candidate_examples)
+            diff = [e - num_sen_per_class[k] for k, e in enumerate(avails)]
+            for j, e in enumerate(diff):
+                if e < 0:
+                    while diff[j] < 0 :
+                        av = [k > 0 for k in diff]
+                        min_value = np.inf
+                        min_group = list()
+                        for ii, ee in enumerate(num_sen_per_class):
+                            if av[ii]:
+                                if ee < min_value:
+                                    min_group = [ii]
+                                    min_value = ee
+                                elif ee == min_value:
+                                    min_group.append(ii)
+                        targ = np.random.choice(min_group, 1)[0]
+                        num_sen_per_class[targ] += 1
+                        num_sen_per_class[j] -= 1
+                        diff = [e - num_sen_per_class[k] for k, e in enumerate(avails)]
+                    print(f"class {cls_number}, sen{j} modified")
+                    print(f"{num_sen_per_class=}")
+                    print(f"{avails=}")
+                    
+                
+
+            for j in range(num_classes):
+                sensitive = (sensitives == j)
+                avail = target * sensitive
+                num_candidate_examples = len(np.where(avail == 1)[0])
+                if num_candidate_examples < num_sen_per_class[j]:
+                    print(f"{num_sen_per_class=}")
+                    print(f"{num_candidate_examples=} is too small - smaller than {num_sen_per_class[j]=}")
+                    raise AssertionError
                 if num_candidate_examples:
                     selected_indices = np.random.choice(np.where(avail == 1)[0],
-                                                        min(num_candidate_examples, num_sen_per_class[j]),
+                                                        num_sen_per_class[j],
                                                         replace=False)
                     class_indices += list(selected_indices)
         return class_indices
