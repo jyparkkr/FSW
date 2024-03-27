@@ -25,7 +25,7 @@ def bool2idx(arr):
 
 
 class Heuristic1(Heuristic2):
-    def prepare_train_loader(self, task_id):
+    def prepare_train_loader(self, task_id, epoch=0):
         """
         Compute gradient for memory replay
         Compute individual sample gradient (against buffer data) for all current data
@@ -37,9 +37,17 @@ class Heuristic1(Heuristic2):
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
-
-        # self.non_select_indexes = list(range(12000))
-        # self.non_select_indexes = copy.deepcopy(self.benchmark.seq_indices_train[task_id])
+        
+        if self.params['alpha'] == 0:
+            return self.benchmark.load(task_id, self.params['batch_size_train'],
+                                    num_workers=num_workers, pin_memory=True)[0]
+        
+        if epoch <= 1:
+            self.original_seq_indices_train = self.benchmark.seq_indices_train[task_id]
+            if hasattr(self.benchmark.trains[task_id], "sensitive"):
+                print(f"Num. of sensitives: {(self.benchmark.trains[task_id].sensitive[self.original_seq_indices_train] != self.benchmark.trains[task_id].targets[self.original_seq_indices_train]).sum().item()}")
+        else:
+            self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
         
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id)
@@ -57,19 +65,19 @@ class Heuristic1(Heuristic2):
                                    num_workers=num_workers, pin_memory=True)[0]
         targets = train_loader.dataset.targets \
             if hasattr(train_loader.dataset, "targets") else train_loader.dataset.dataset.targets
-        num_dict = {x:0 for x in targets.unique().cpu().numpy()}
-        num_dict_list = {x:list() for x in targets.unique().cpu().numpy()}
+        if isinstance(targets, torch.Tensor):
+            classes = targets.unique().cpu().numpy()
+        elif isinstance(targets, np.ndarray):
+            classes = np.unique(targets)
+        num_dict = {x:0 for x in classes}
+        num_dict_list = {x:list() for x in classes}
 
         # data_len = len(targets)
         data_len = len(loss_matrix)
 
         # for debugging
         classwise_loss = []
-        inputs = train_loader.dataset.inputs \
-            if hasattr(train_loader.dataset, "inputs") else train_loader.dataset.dataset.inputs
-        optim = self.prepare_optimizer(task_id)
-        crit = self.prepare_criterion(task_id)
-        original_model = copy.deepcopy(self.backbone)
+
 
         for b in range(data_len-1):
             # inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
@@ -81,7 +89,6 @@ class Heuristic1(Heuristic2):
             select_ind = torch.argmin(loss_mean + loss_std, dim=0)
             accumulate_sum.append(copy.deepcopy(loss_mean[select_ind].item() + loss_std[select_ind].item()))
             classwise_loss.append(loss_matrix[select_ind].view(-1).detach().clone().cpu().numpy())
-            # print(f"{classwise_loss[-1]=}")
 
             target_idx = self.non_select_indexes[select_ind.item()]
             # print(f"{targets[target_idx].item()=}")
@@ -104,30 +111,34 @@ class Heuristic1(Heuristic2):
         # for debugging
         os.makedirs(f"{self.params['output_dir']}/figs", exist_ok=True)
         plt.plot(accumulate_sum)
-        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_accumulate_loss.png")
+        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_epoch_{epoch}_accumulate_loss.png")
         plt.clf()
 
         classwise_loss = np.array(classwise_loss).T
         for i, e in enumerate(classwise_loss):
             plt.plot(e, label=i)
         plt.legend(loc="best")
-        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_classwise_loss.png")
+        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_epoch_{epoch}_classwise_loss.png")
 
         plt.clf()
 
         for i, e in num_dict_list.items():
             plt.plot(e, label=i)
         plt.legend(loc="best")
-        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_class_num.png")
+        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_epoch_{epoch}_class_num.png")
 
         plt.clf()
 
-        self.backbone = copy.deepcopy(original_model)
         best_ind = np.argmin(np.array(accumulate_sum))
         select_curr_indexes = accumulate_select_indexes[best_ind]
+
+        # select_curr_indexes = np.random.choice(len(self.benchmark.seq_indices_train[task_id]), 1000, False)
         print(f"{len(select_curr_indexes)=}")
 
         select_curr_indexes = list(set(select_curr_indexes))
+        select_curr_indexes.sort()
+        print(f"For debugging: {len(select_curr_indexes)=}")
+
         self.benchmark.seq_indices_train[task_id] = select_curr_indexes
         
         num_workers = self.params.get('num_dataloader_workers', 0)

@@ -74,7 +74,7 @@ class Heuristic(ContinualAlgorithm):
                 embeds = out
                 out = block(out)
             return out, embeds
-        else: #ResNet
+        elif "ResNet18Small" in str(self.backbone.__class__):
             bsz = inp.size(0)
             shape = (bsz, self.backbone.dim, \
                         self.backbone.input_shape[-2], self.backbone.input_shape[-1])
@@ -87,6 +87,10 @@ class Heuristic(ContinualAlgorithm):
             embeds = out.view(out.size(0), -1)
             out = self.backbone.linear(embeds)
             return out, embeds
+        else:
+            if hasattr(self.backbone, "forward_embeds"):
+                return self.backbone.forward_embeds(inp)
+            raise NotImplementedError
 
     def get_loss_grad(self):
         raise NotImplementedError
@@ -120,8 +124,10 @@ class Heuristic(ContinualAlgorithm):
         
         if epoch <= 1:
             self.original_seq_indices_train = self.benchmark.seq_indices_train[task_id]
+            if hasattr(self.benchmark.trains[task_id], "sensitive"):
+                print(f"Num. of sensitives: {(self.benchmark.trains[task_id].sensitive[self.original_seq_indices_train] != self.benchmark.trains[task_id].targets[self.original_seq_indices_train]).sum().item()}")
         else:
-            self.benchmark.seq_indices_train[task_id] = self.original_seq_indices_train
+            self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id) 

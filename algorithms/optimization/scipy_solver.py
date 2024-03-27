@@ -5,7 +5,11 @@ from .cplex_solver import minimax_LP_solver_v2, minsum_LP_solver_v2
 
 
 def LS_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
-    soln = lsq_linear(A, b, bounds=(0, 1))
+    try:
+        soln = lsq_linear(A, b, bounds=(0, 1))
+    except np.linalg.LinAlgError:
+        print(f"{np.linalg.LinAlgError} Raised")
+        soln = lsq_linear(A, b, bounds=(0, 1), lsq_solver="lsmr")
     return soln.x
 
 def minimax_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):

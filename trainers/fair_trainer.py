@@ -4,7 +4,7 @@ import cl_gym as cl
 from .base import ContinualTrainer1
 import numpy as np
 
-class FairContinualTrainer(ContinualTrainer1):
+class FairContinualTrainer1(ContinualTrainer1):
     def train_algorithm_on_task(self, task: int):
         train_loader = self.algorithm.prepare_train_loader(task)
         optimizer = self.algorithm.prepare_optimizer(task)
@@ -82,7 +82,7 @@ class FairContinualTrainer(ContinualTrainer1):
                 'accuracy_s0': get_avg(class_acc_s0), 'accuracy_s1': get_avg(class_acc_s1), \
                 'classwise_accuracy': class_acc}
         
-class FairContinualTrainer2(FairContinualTrainer):
+class FairContinualTrainer2(FairContinualTrainer1):
     def train_algorithm_on_task(self, task: int):
         # train_loader = self.algorithm.prepare_train_loader(task)
         optimizer = self.algorithm.prepare_optimizer(task)
@@ -91,7 +91,7 @@ class FairContinualTrainer2(FairContinualTrainer):
         for epoch in range(1, self.params['epochs_per_task']+1):
             self.on_before_training_epoch()
             self.tick('epoch')
-            train_loader = self.algorithm.prepare_train_loader(task, epoch=epoch)
+            train_loader = self.algorithm.prepare_train_loader(task, epoch=epoch) # modified
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):

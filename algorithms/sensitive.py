@@ -221,7 +221,7 @@ class Heuristic3(Heuristic):
             # print(f"{sample_weight.shape=}")
         loss = loss.mean()
         loss.backward()
-        if task_ids[0] in [2, 3, 4, 5]:
+        if (task_ids[0] > 1) and self.params['tau']:
             grad_batch = flatten_grads(self.backbone).detach().clone()
             optimizer.zero_grad()
 

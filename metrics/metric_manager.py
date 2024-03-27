@@ -62,7 +62,7 @@ class GeneralMetric():
 class ClasswiseAccuracy(GeneralMetric):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.agg = lambda x:x 
+        self.agg = np.mean
 
 
 class PerformanceMetric2(PerformanceMetric):
@@ -79,8 +79,10 @@ class PerformanceMetric2(PerformanceMetric):
     
     def compute_overall(self) -> float:
         data = self.data[1:,1:,-1]
-        return [np.mean(i[np.nonzero(i)]) for i in data]
-
+        task_mean = list()
+        for i, task in enumerate(data):
+            task_mean.append(np.mean(task[:i+1]))
+        return np.mean(task_mean)
 
 class StdMetric(PerformanceMetric2):
     def __init__(self, 
@@ -113,6 +115,18 @@ class StdMetric(PerformanceMetric2):
             # print(task_mean)
             std.append(task_std)
         return std
+    
+    def compute(self, current_task: int) -> float:
+        if current_task < 1:
+            raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
+        return self.get_std[current_task+1]
+
+    def get_data(self, r = 3) -> np.ndarray:
+        return np.round(self.get_std(), r)
+
+    def compute_overall(self) -> float:
+        data = self.get_std()
+        return np.mean(data)
 
 
 class MetricCollector2(MetricCollector):
@@ -144,7 +158,7 @@ class MetricCollector2(MetricCollector):
     def _prepare_meters(self) -> Dict[str, ContinualMetric]:
         if self.eval_type == 'classification':
             metrics = {'accuracy': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
-                    'std': StdMetric(self.num_tasks, self.epochs_per_task),
+                    'std': StdMetric(self.num_tasks, epochs_per_task = self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
             metrics['std'].update_acc_metric(metrics['accuracy'])

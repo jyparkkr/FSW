@@ -1,18 +1,40 @@
 import torchvision
 from typing import Any, Callable, Tuple, Optional, Dict, List
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
-from cl_gym.benchmarks.transforms import get_default_cifar_transform
+from cl_gym.benchmarks.transforms import CIFAR10_MEAN, CIFAR10_STD, CIFAR100_MEAN, CIFAR100_STD
 
 from cl_gym.benchmarks.base import Benchmark, DynamicTransformDataset, SplitDataset
 from cl_gym.benchmarks.mnist import ContinualMNIST, SplitMNIST
-from cl_gym.benchmarks.cifar import SplitCIFAR10, SplitCIFAR100
-from .mnist import SplitDataset2
+from cl_gym.benchmarks.cifar import SplitCIFAR
+
+from .base import SplitDataset2
 import numpy as np
 import torch
 from PIL import Image
 
+def get_default_cifar_transform(num_tasks: int, is_cifar_100=False):
+    normalize_mean = CIFAR100_MEAN if is_cifar_100 else CIFAR10_MEAN
+    normalize_std = CIFAR100_STD if is_cifar_100 else CIFAR10_STD
+    transforms = torchvision.transforms.Compose([
+        # torchvision.transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+        torchvision.transforms.RandomCrop(32, padding=4),
+        torchvision.transforms.RandomHorizontalFlip(),
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize(normalize_mean, normalize_std),
+    ])
+    return [transforms]*num_tasks
 
-class CIFAR10(SplitCIFAR10):
+def get_test_cifar_transform(num_tasks: int, is_cifar_100=False):
+    normalize_mean = CIFAR100_MEAN if is_cifar_100 else CIFAR10_MEAN
+    normalize_std = CIFAR100_STD if is_cifar_100 else CIFAR10_STD
+    transforms = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize(normalize_mean, normalize_std),
+    ])
+    return [transforms]*num_tasks
+
+
+class CIFAR10(SplitCIFAR):
     """
     Split CIFAR-10 benchmark.
     has 5 tasks, each with 2 classes of CIFAR-10.
@@ -25,23 +47,31 @@ class CIFAR10(SplitCIFAR10):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
-                 random_class_idx=False):
+                 random_class_idx=False,
+                 is_cifar_100 = False):
         self.random_class_idx = random_class_idx
-        self.num_classes_per_split = 2
-        cls = np.arange(10)
+        self.is_cifar_100 = is_cifar_100
+        self.num_classes_per_split = 100//num_tasks if self.is_cifar_100 else 10//num_tasks
+        cls = np.arange(100) if self.is_cifar_100 else np.arange(10)
         if random_class_idx:
             self.class_idx = np.random.choice(cls, len(cls), replace=False)
         else:
             self.class_idx = cls
         print(f"{self.class_idx}")
-        super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
+        if task_input_transforms is None:
+            task_input_transforms = get_default_cifar_transform(num_tasks, self.is_cifar_100)
+        super(SplitCIFAR, self).__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
                          per_task_subset_examples, task_input_transforms, task_target_transforms)
+        self.load_datasets()
+        self.prepare_datasets()
+
 
     def __load_cifar(self):
         transforms = self.task_input_transforms[0]
+        test_transform = get_test_cifar_transform(1, self.is_cifar_100)[0]
         CIFAR_dataset = torchvision.datasets.CIFAR100 if self.is_cifar_100 else torchvision.datasets.CIFAR10
         self.cifar_train = CIFAR_dataset(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.cifar_test = CIFAR_dataset(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.cifar_test = CIFAR_dataset(DEFAULT_DATASET_DIR, train=False, download=True, transform=test_transform)
 
     def load_datasets(self):
         self.__load_cifar()
@@ -57,12 +87,6 @@ class CIFAR10(SplitCIFAR10):
             idx = self.seq_indices_train[task]
         weight = self.trains[task].sample_weight
         weight[idx] = sample_weight
-        # print(f"{weight=}")
-        # print(f"{weight.dtype=}")
-        # print(f"{weight.shape=}")
-        # print(f"{sample_weight=}")
-        # print(f"{sample_weight.dtype=}")
-        # print(f"{sample_weight.shape=}")
         self.trains[task].update_weight(weight)
 
     def precompute_memory_indices(self):
@@ -111,3 +135,21 @@ class CIFAR10(SplitCIFAR10):
             # self.seq_indices_test[task] = randint(0, len(self.tests[task]), size=min(self.per_task_seq_examples, len(self.tests[task])))
             self.seq_indices_train[task] = sorted(np.random.choice(len(self.trains[task]), size=min(self.per_task_seq_examples, len(self.trains[task])), replace=False).tolist())
             self.seq_indices_test[task] = sorted(np.random.choice(len(self.tests[task]), size=min(self.per_task_seq_examples, len(self.tests[task])), replace=False).tolist())
+
+class CIFAR100(CIFAR10):
+    """
+    Split CIFAR-100 benchmark.
+    has 5 tasks, each with 20 classes of CIFAR-100.
+    """
+    def __init__(self,
+                 num_tasks: int,
+                 per_task_examples: Optional[int] = None,
+                 per_task_joint_examples: Optional[int] = 0,
+                 per_task_memory_examples: Optional[int] = 0,
+                 per_task_subset_examples: Optional[int] = 0,
+                 task_input_transforms: Optional[list] = None,
+                 task_target_transforms: Optional[list] = None,
+                 random_class_idx=False):
+        super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
+                         per_task_subset_examples, task_input_transforms, task_target_transforms, 
+                         random_class_idx=random_class_idx, is_cifar_100=True)
