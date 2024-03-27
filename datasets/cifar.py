@@ -110,7 +110,7 @@ class CIFAR10(SplitCIFAR):
             self.memory_indices_test[task] = indices_test[:]
 
     def sample_uniform_class_indices(self, dataset, start_class_idx, end_class_idx, num_samples) -> List:
-        target_classes = dataset.targets.clone().detach().numpy()
+        target_classes = dataset.targets
         num_examples_per_class = self._calculate_num_examples_per_class(start_class_idx, end_class_idx, num_samples)
         class_indices = []
         # choose num_examples_per_class for each class

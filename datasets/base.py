@@ -30,13 +30,31 @@ class SplitDataset2(SplitDataset):
     def update_weight(self, sample_weight):
         self.sample_weight = sample_weight
 
-    def clear_dataset(self):
+    def build_split(self, task_id):
+        start_class = (task_id-1) * self.num_classes_per_split
+        end_class = task_id * self.num_classes_per_split
+        indices = np.zeros_like(self.original_target)
+        for c in self.class_idx[start_class:end_class]:
+            indices = np.logical_or(indices, self.original_target == c)
+        self.true_index = np.where(indices)[0] 
+        self.targets = self.original_target[self.true_index]
+
+    def __getitem__(self, index: int):
+        idx = self.true_index[index]
+        img, target = self.dataset[idx]
+        sample_weight = self.sample_weight[index]
+        return img, target, self.task_id, idx, sample_weight
+
+    def __len__(self):
+        return len(self.true_index)
+
+    def __clear_dataset(self):
         original_shape = self.dataset.data.shape
         self.dataset.data = torch.zeros([0, *original_shape[1:]], dtype=torch.uint8)
         self.dataset.targets = torch.zeros([0], dtype=int)
         self.original_target = np.zeros([0], dtype=int)
         self.targets = np.zeros([0], dtype=int)
-        self.selected_indices = np.zeros([0], dtype=int)
+        self.true_index = np.zeros([0], dtype=int)
         self.sample_weight = torch.ones([0])
 
     def __add_data(self, X, y, weight=None):
@@ -53,10 +71,10 @@ class SplitDataset2(SplitDataset):
         self.dataset.targets = torch.cat([self.dataset.targets, y], dim=0)
         self.targets = np.concatenate([self.targets, y], axis=0)
         append_idx = np.arange(original_dataset_len, original_dataset_len+len(y), dtype=int)
-        self.selected_indices = np.concatenate([self.selected_indices, append_idx], axis=0)
+        self.true_index = np.concatenate([self.true_index, append_idx], axis=0)
         self.sample_weight = torch.cat([self.sample_weight, weight], dim=0)
 
-    def replace_data(self, X, y, idx, weight=None):
+    def __replace_data(self, X, y, idx, weight=None):
         if X.shape[0] == y.shape[0]:
             raise ValueError(f"Wrong size: {X.shape=}, {y.shape=}")
         if weight is None:
@@ -70,43 +88,24 @@ class SplitDataset2(SplitDataset):
         self.sample_weight[idx] = weight.clone()
 
 
-    def build_split(self, task_id):
-        start_class = (task_id-1) * self.num_classes_per_split
-        end_class = task_id * self.num_classes_per_split
-        indices = np.zeros_like(self.original_target)
-        for c in self.class_idx[start_class:end_class]:
-            indices = np.logical_or(indices, self.original_target == c)
-        self.selected_indices = np.where(indices)[0] 
-        self.targets = self.original_target[self.selected_indices]
-
-    def __getitem__(self, index: int):
-        idx = self.selected_indices[index]
-        img, target = self.dataset[idx]
-        sample_weight = self.sample_weight[index]
-        return img, target, self.task_id, sample_weight
-
-    def __len__(self):
-        return len(self.selected_indices)
-
-
 class SplitDataset3(SplitDataset2):
     def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         super().__init__(task_id, num_classes_per_split, dataset, class_idx = class_idx)
 
     def build_split(self, task_id):
         super().build_split(task_id)
-        self.sensitives = self.dataset.sensitives[self.selected_indices]
+        self.sensitives = self.dataset.sensitives[self.true_index]
 
     def __getitem__(self, index: int):
-        img, target, task_id, sample_weight = super().__getitem__(index)
+        img, target, task_id, idx, sample_weight = super().__getitem__(index)
         sen = int(self.sensitives[index])
-        return img, target, task_id, sample_weight, sen
+        return img, target, task_id, idx, sample_weight, sen
 
 
 # For biasedMNIST
 class SplitDataset4(SplitDataset3):
     def __getitem__(self, index: int):
-        idx = self.selected_indices[index]
+        idx = self.true_index[index]
         img = self.dataset.data[idx]
         target = int(self.dataset.targets[idx])
         sample_weight = self.sample_weight[index]
@@ -122,4 +121,4 @@ class SplitDataset4(SplitDataset3):
         if self.dataset.target_transform is not None:
             target = self.dataset.target_transform(target)
 
-        return img, target, self.task_id, sample_weight, sen
+        return img, target, self.task_id, idx, sample_weight, sen
