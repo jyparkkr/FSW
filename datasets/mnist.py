@@ -33,40 +33,43 @@ class SplitDataset2(SplitDataset):
             self.class_idx = np.unique(target_classes)
         else:
             self.class_idx = class_idx
-        self.__build_split(dataset, task_id)
+        self.dataset = dataset
+        self.__build_split(task_id)
         self.sample_weight = torch.ones(self.__len__()) #ADDED - for dtype agreement
     
     def update_weight(self, sample_weight):
         self.sample_weight = sample_weight
 
-    def __build_split(self, dataset, task_id):
+    def __build_split(self, task_id):
         start_class = (task_id-1) * self.num_classes_per_split
         end_class = task_id * self.num_classes_per_split
         # For CIFAR-like datasets in torchvision where targets are list
-        if isinstance(dataset.targets, list):
-            target_classes = np.asarray(dataset.targets)
+        if isinstance(self.dataset.targets, list):
+            target_classes = np.asarray(self.dataset.targets)
         # for MNIST-like datasets where targets are tensors
         else:
-            target_classes = dataset.targets.clone().detach().numpy()
+            target_classes = self.dataset.targets.clone().detach().numpy()
         # target_classes = dataset.targets.clone().detach().numpy()
         indices = np.zeros_like(target_classes)
         for c in self.class_idx[start_class:end_class]:
             indices = np.logical_or(indices, target_classes == c)
-        selected_indices = np.where(indices)[0]        
-        for i, idx in enumerate(selected_indices):
-            img, target = dataset[idx]
-            target = torch.tensor(target)
-            self.inputs.append(img)
-            self.targets.append(target)
-        
-        self.inputs = torch.stack(self.inputs)
+        self.selected_indices = np.where(indices)[0] 
+
+        self.targets = list()
+        for i, idx in enumerate(self.selected_indices):
+            _, target = self.dataset[idx]
+            self.targets.append(torch.tensor(target))
         self.targets = torch.stack(self.targets)
 
+
     def __getitem__(self, index: int):
-        img, target = self.inputs[index], int(self.targets[index])
+        idx = self.selected_indices[index]
+        img, target = self.dataset[idx]
         sample_weight = self.sample_weight[index]
         return img, target, self.task_id, sample_weight
 
+    def __len__(self):
+        return len(self.selected_indices)
 
 class SplitDataset3(SplitDataset2):
     def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
@@ -87,6 +90,7 @@ class SplitDataset3(SplitDataset2):
         self.__build_split(dataset, task_id)
         self.sample_weight = torch.ones(self.__len__()) #ADDED - for dtype agreement
 
+    # __getitem__에서 transform하도록 코드 바꿔야함. 그래야지 매 epoch마다 다르게 transfrom해서 가져옴
     def __build_split(self, dataset, task_id):
         start_class = (task_id-1) * self.num_classes_per_split
         end_class = task_id * self.num_classes_per_split

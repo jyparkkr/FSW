@@ -88,6 +88,8 @@ class Heuristic(ContinualAlgorithm):
             out = self.backbone.linear(embeds)
             return out, embeds
         else:
+            if hasattr(self.backbone, "forward_embeds"):
+                return self.backbone.forward_embeds(inp)
             raise NotImplementedError
 
     def get_loss_grad(self):
