@@ -6,7 +6,8 @@ from cl_gym.benchmarks.transforms import CIFAR10_MEAN, CIFAR10_STD, CIFAR100_MEA
 from cl_gym.benchmarks.base import Benchmark, DynamicTransformDataset, SplitDataset
 from cl_gym.benchmarks.mnist import ContinualMNIST, SplitMNIST
 from cl_gym.benchmarks.cifar import SplitCIFAR
-from .mnist import SplitDataset2
+
+from .base import SplitDataset2
 import numpy as np
 import torch
 from PIL import Image
@@ -86,12 +87,6 @@ class CIFAR10(SplitCIFAR):
             idx = self.seq_indices_train[task]
         weight = self.trains[task].sample_weight
         weight[idx] = sample_weight
-        # print(f"{weight=}")
-        # print(f"{weight.dtype=}")
-        # print(f"{weight.shape=}")
-        # print(f"{sample_weight=}")
-        # print(f"{sample_weight.dtype=}")
-        # print(f"{sample_weight.shape=}")
         self.trains[task].update_weight(weight)
 
     def precompute_memory_indices(self):

@@ -1,4 +1,7 @@
-output/
+outputs/*
+scripts_output/*
+outputs_backup/*
+scripts/temp/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

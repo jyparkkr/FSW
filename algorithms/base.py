@@ -127,7 +127,7 @@ class Heuristic(ContinualAlgorithm):
             if hasattr(self.benchmark.trains[task_id], "sensitive"):
                 print(f"Num. of sensitives: {(self.benchmark.trains[task_id].sensitive[self.original_seq_indices_train] != self.benchmark.trains[task_id].targets[self.original_seq_indices_train]).sum().item()}")
         else:
-            self.benchmark.seq_indices_train[task_id] = self.original_seq_indices_train
+            self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
         losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id) 
