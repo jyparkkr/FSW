@@ -80,8 +80,6 @@ class Heuristic1(Heuristic2):
 
 
         for b in range(data_len-1):
-            # inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
-            # print(f"{loss_matrix.shape=}")
             loss_matrix = loss_matrix - self.params['alpha'] * forget_matrix
             loss_mean = torch.mean(loss_matrix, dim=1, keepdim=True)
             loss_std = torch.std(loss_matrix, dim=1, keepdim=True)

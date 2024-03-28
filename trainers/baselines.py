@@ -75,3 +75,29 @@ class BaseContinualTrainer(cl.trainer.ContinualTrainer):
         # cor, tot = np.array(list(class_acc.values())).sum(axis=0)
         std = 100.0 * np.std([cor/count for cor, count in class_acc.values()])
         return {'accuracy': avg, 'loss': test_loss, "std": std}
+
+class BaseMemoryContinualTrainer(BaseContinualTrainer):
+    def train_algorithm_on_task(self, task: int):
+        train_loader = self.algorithm.prepare_train_loader(task)
+        optimizer = self.algorithm.prepare_optimizer(task)
+        criterion = self.algorithm.prepare_criterion(task)
+        device = self.params['device']
+        for epoch in range(1, self.params['epochs_per_task']+1):
+            self.on_before_training_epoch()
+            self.tick('epoch')
+            self.algorithm.backbone.train()
+            self.algorithm.backbone = self.algorithm.backbone.to(device)
+            for batch_idx, items in enumerate(train_loader):
+                inp, targ, task_ids, indices, *_ = items
+                # if batch_idx == 0:
+                #     print(f"{sample_weight.to(device)=}")
+                self.on_before_training_step()
+                self.tick('step')
+                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
+                                             indices, optimizer, criterion)
+                self.algorithm.training_step_end()
+                self.on_after_training_step()
+            self.algorithm.training_epoch_end()
+            self.on_after_training_epoch()
+        self.algorithm.training_task_end()
+

@@ -27,7 +27,7 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, sample_weight, *_ = items
+                inp, targ, task_ids, indices, sample_weight, *_ = items
                 # if batch_idx == 0:
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
@@ -56,9 +56,9 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             classes = self.algorithm.benchmark.class_idx[:task*num_classes_per_split]
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
-            for (inp, targ, task_ids, sample_weight) in eval_loader:
+            for items in eval_loader:
+                inp, targ, task_ids, *_ = items
                 inp, targ, task_ids = inp.to(device), targ.to(device), task_ids.to(device)
-                # inp, targ, task_ids, sample_weight = inp.to(device), targ.to(device), task_ids.to(device), sample_weight.to(device)
                 pred = self.algorithm.backbone(inp, task_ids)
                 total += len(targ)
                 test_loss += criterion(pred, targ).item()
@@ -88,7 +88,7 @@ class ContinualTrainer2(ContinualTrainer1):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, sample_weight, *_ = items
+                inp, targ, task_ids, indices, sample_weight, *_ = items
                 # if batch_idx == 0:
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()

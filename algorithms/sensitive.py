@@ -27,8 +27,8 @@ class Heuristic3(Heuristic):
             batch = next(self.episodic_memory_iter)
         
         device = self.params['device']
-        inp, targ, task_id, sample_weight, sensitive_label, *_ = batch
-        return inp.to(device), targ.to(device), task_id.to(device), sample_weight.to(device), sensitive_label.to(device)
+        inp, targ, task_id, indices, sample_weight, sensitive_label, *_ = batch
+        return inp.to(device), targ.to(device), task_id.to(device), indices, sample_weight.to(device), sensitive_label.to(device)
 
     def get_loss_grad(self, task_id, loader, current_set = False):
         criterion = self.prepare_criterion(task_id)
@@ -48,7 +48,8 @@ class Heuristic3(Heuristic):
         # sensitive_grad_dict = {x:list() for x in range(2)}
         new_grads, grads = None, None
         
-        for batch_idx, (inp, targ, t_id, sample_weight, sensitive_label, *_) in enumerate(loader):
+        for batch_idx, items in enumerate(loader):
+            inp, targ, t_id, indices, sample_weight, sensitive_label, *_ = items
             # self.backbone.forward
             inp, targ, t_id, sensitive_label  = inp.to(device), targ.to(device), t_id.to(device), sensitive_label.to(device)
             pred, embeds = self.forward_embeds(inp)
@@ -226,7 +227,7 @@ class Heuristic3(Heuristic):
             optimizer.zero_grad()
 
             # get grad_ref
-            inp_ref, targ_ref, task_ids_ref, sample_weight_ref, sensitive_ref = self.sample_batch_from_memory()
+            inp_ref, targ_ref, task_ids_ref, *_ = self.sample_batch_from_memory()
             pred_ref = self.backbone(inp_ref, task_ids_ref)
             loss = criterion(pred_ref, targ_ref.reshape(len(targ_ref)))
             loss.backward()
