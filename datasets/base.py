@@ -43,7 +43,7 @@ class SplitDataset2(SplitDataset):
         idx = self.true_index[index]
         img, target = self.dataset[idx]
         sample_weight = self.sample_weight[index]
-        return img, target, self.task_id, idx, sample_weight
+        return img, target, self.task_id, index, sample_weight
 
     def __len__(self):
         return len(self.true_index)

@@ -69,7 +69,7 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
 
 class BaseMemoryContinualAlgoritm(BaseContinualAlgoritm):
     def __init__(self, *args, **kwargs):
-        super.__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def sample_batch_from_memory(self):
         try:
@@ -89,7 +89,7 @@ class BaseMemoryContinualAlgoritm(BaseContinualAlgoritm):
 
     def update_episodic_memory(self):
         # called when training_task_end
-        self.update_memory_after_train(self) # Do something after train
+        self.update_memory_after_train() # Do something after train
         self.episodic_memory_loader, _ = self.benchmark.load_memory_joint(self.current_task,
                                                                           batch_size=self.params['batch_size_memory'],
                                                                           shuffle=True,
@@ -98,3 +98,25 @@ class BaseMemoryContinualAlgoritm(BaseContinualAlgoritm):
 
     def update_memory_after_train(self):
         pass
+
+    # def load_memory_joint(self,
+    #                       task: int,
+    #                       batch_size: int,
+    #                       shuffle: Optional[bool] = True,
+    #                       num_workers: Optional[int] = 0,
+    #                       pin_memory: Optional[bool] = True) -> Tuple[DataLoader, DataLoader]:
+    #     if task > self.num_tasks:
+    #         raise ValueError(f"Asked to load memory of task={task} but the benchmark has {self.num_tasks} tasks")
+    #     trains, tests = [], []
+    #     for t in range(1, task + 1):
+    #         train_indices = self.memory_indices_train[t]
+    #         test_indices = self.memory_indices_test[t]
+    #         train_dataset = Subset(self.trains[t], train_indices)
+    #         test_dataset = Subset(self.tests[t], test_indices)
+    #         trains.append(train_dataset)
+    #         tests.append(test_dataset)
+    
+    #     trains, tests = ConcatDataset(trains), ConcatDataset(tests)
+    #     train_loader = DataLoader(trains, batch_size, shuffle, num_workers=num_workers, pin_memory=pin_memory)
+    #     test_loader = DataLoader(tests, batch_size, shuffle, num_workers=num_workers, pin_memory=pin_memory)
+    #     return train_loader, test_loader
