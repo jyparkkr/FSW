@@ -93,36 +93,53 @@ def main():
 
     # load algorithm, metric, trainer
     fairness_metrics = ['EO']
+    
     if params['metric'] == "std":
         fair_metric = 'std'
-        if params['algorithm'] == "optimization":
-            from algorithms.imbalance import Heuristic2
-            algorithm = Heuristic2(backbone, benchmark, params, requires_memory=True)
-        elif params['algorithm'] == "greedy":
-            from algorithms.imbalance_greedy import Heuristic1
-            algorithm = Heuristic1(backbone, benchmark, params, requires_memory=True)
         from metrics import MetricCollector2
         from trainers import ContinualTrainer
-        metric_manager_callback = MetricCollector2(num_tasks=params['num_tasks'],
-                                                   eval_interval='epoch',
-                                                   epochs_per_task=params['epochs_per_task'])
-        trainer = ContinualTrainer(algorithm, params, callbacks=[metric_manager_callback])
-    elif params['metric'] == "EO":
-        fair_metric = 'multiclass_eo'
-        if params['algorithm'] == "optimization":
-            from algorithms.sensitive import Heuristic3
-            algorithm = Heuristic3(backbone, benchmark, params, requires_memory=True)
+        MetricCollector = MetricCollector2
+        Trainer = ContinualTrainer
+
+        if params['method'] in ["FSW", 'joint', 'finetune']:
+            from algorithms.imbalance import Heuristic2
+            Algorithm = Heuristic2
+        elif params['method'] in ["FSS"]:
+            from algorithms.imbalance_greedy import Heuristic1
+            Algorithm = Heuristic1
+        elif params['method'] in ["AGEM"]:
+            from algorithms.agem import AGEM
+            Algorithm = AGEM
+        elif params['method'] in ["GSS"]:
+            from algorithms.gss import GSSGreedy
+            from trainers.baselines import BaseMemoryContinualTrainer
+            Algorithm = GSSGreedy
+            Trainer = BaseMemoryContinualTrainer
         else:
             raise NotImplementedError
+        
+    elif params['metric'] == "EO":
+        fair_metric = 'multiclass_eo'
         from metrics import FairMetricCollector
         from trainers.fair_trainer import FairContinualTrainer2
-        metric_manager_callback = FairMetricCollector(num_tasks=params['num_tasks'],
-                                                      eval_interval='epoch',
-                                                      epochs_per_task=params['epochs_per_task'])
-        trainer = FairContinualTrainer2(algorithm, params, callbacks=[metric_manager_callback])
+        MetricCollector = FairMetricCollector
+        Trainer = FairContinualTrainer2
+
+        if params['method'] == "FSW":
+            from algorithms.sensitive import Heuristic3
+            Algorithm = Heuristic3
+        else:
+            raise NotImplementedError
     else:
         raise NotImplementedError
-        
+
+    algorithm = Algorithm(backbone, benchmark, params, requires_memory=True)
+    metric_manager_callback = MetricCollector(num_tasks=params['num_tasks'],
+                                                eval_interval='epoch',
+                                                epochs_per_task=params['epochs_per_task'])
+    trainer = Trainer(algorithm, params, callbacks=[metric_manager_callback])
+
+
     # optimization parameter fix
     if params['metric'] in ["EO"]:
         if params['fairness_agg'] == "mean":
