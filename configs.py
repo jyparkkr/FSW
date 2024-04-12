@@ -6,7 +6,7 @@ import subprocess
 import copy
 from datasets import __all__ as dataset_list, fairness_dataset
 
-model_pool = ["MLP", "resnet18"]
+model_pool = ["MLP", "resnet18", "resnet18small"]
 optimizer_pool = ["sgd", "adam"]
 algorithm_pool = ["optimization", "greedy"]
 metric_pool = ["std", "EO"]
@@ -99,19 +99,20 @@ def make_params(args) -> dict:
         params['method'] = 'joint'
     elif params['tau'] == 0:
         params['method'] = 'finetune'
+    elif params['alpha'] == 0:
+        params['method'] = 'vanilla'
 
     if params['method'] == 'joint':
         params['num_tasks'] == 1
     elif params['method'] == 'finetune':
         params['tau'] == 0
+    elif params['method'] == 'vanilla':
+        params['alpha'] == 0
+    trial_id = os.path.join(trial_id, f"{params['method']}")
 
-    other_method_pool = copy.deepcopy(method_pool)
-    other_method_pool.remove("FSS")
-    other_method_pool.remove("FSW")
-    if params['method'] in other_method_pool:
-        trial_id = os.path.join(trial_id, f"{params['method']}")
+    # add hyperparameters
     trial_id = os.path.join(trial_id, \
-                            f"seed={params['seed']}_epoch={params['epochs_per_task']}_lr={params['learning_rate']}")
+                            f"seed={params['seed']}_model={params['model']}_epoch={params['epochs_per_task']}_lr={params['learning_rate']}")
     # contain tau (buffer parameter) if buffer is used
     if params['method'] in ["FSS", "FSW", "GSS"]: 
         trial_id += f"_tau={params['tau']}"

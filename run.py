@@ -37,55 +37,61 @@ def main():
                         per_task_memory_examples=params['per_task_memory_examples'],
                         per_task_examples = params['per_task_examples'],
                         random_class_idx = params['random_class_idx'])
-        input_dim = 28*28
-        num_classes = 10
+        input_dim = (28, 28)
     elif params['dataset'] == 'FashionMNIST':
         benchmark = FashionMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
                                 random_class_idx = params['random_class_idx'])
-        input_dim = 28*28
-        num_classes = 10
-
+        input_dim = (28, 28)
     elif params['dataset'] == 'CIFAR10':
         benchmark = CIFAR10(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
                             random_class_idx = params['random_class_idx'])
-        input_dim = 3*32*32
-        num_classes = 10
-
+        input_dim = (3, 32, 32)
     elif params['dataset'] == 'CIFAR100':        
         benchmark = CIFAR100(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
                             random_class_idx = params['random_class_idx'])
-        input_dim = 3*32*32
-        num_classes = 100
-
+        input_dim = (3, 32, 32)
     elif params['dataset'] in ["BiasedMNIST"]:
         benchmark = BiasedMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
                                 random_class_idx = params['random_class_idx'])
-        input_dim = 3*28*28
-        num_classes = 10
-
+        input_dim = (3, 28, 28)
     else:
         raise NotImplementedError
+    class_idx = benchmark.class_idx
+    num_classes = len(class_idx)
 
     # load backbone, 
     if params['model'] == "MLP": 
-        backbone = cl.backbones.MLP2Layers(
+        from backbones import MLP2Layers2
+        backbone = MLP2Layers2(
             input_dim=input_dim, 
             hidden_dim_1=256, 
             hidden_dim_2=256, 
-            output_dim=num_classes
+            output_dim=num_classes,
+            class_idx=class_idx,
+            config=params
+            ).to(params['device'])
+    elif params['model'] == "resnet18small": 
+        from backbones import ResNet18Small2
+        backbone = ResNet18Small2(
+            input_dim=input_dim, 
+            output_dim=num_classes,
+            class_idx=class_idx,
+            config=params
             ).to(params['device'])
     elif params['model'] == "resnet18": 
-        backbone = cl.backbones.ResNet18Small(
-            num_classes_per_head=num_classes//params['num_tasks'], 
-            num_classes=num_classes, 
+        from backbones import ResNet18
+        backbone = ResNet18(
+            input_dim=input_dim, 
+            output_dim=num_classes,
+            class_idx=class_idx,
             config=params
             ).to(params['device'])
     else:

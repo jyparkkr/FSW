@@ -26,6 +26,14 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
         inp, targ, task_id, *_ = batch
         return inp.to(device), targ.to(device), task_id.to(device)
 
+    def before_training_task(self):
+        # called before loader, optimizer, criterion initialized
+        pass
+
+    def before_training_epoch(self):
+        # called after every epoch starts, before every training step begins 
+        pass
+
     def prepare_train_loader(self, task_id):
         num_workers = self.params.get('num_dataloader_workers', 0)
         return self.benchmark.load(task_id, self.params['batch_size_train'],

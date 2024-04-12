@@ -16,6 +16,16 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
                  logger: Optional[Logger] = None):
         super().__init__(algorithm, params, callbacks, logger)
 
+    def on_before_training_task(self):
+        super().on_before_training_task()
+        if hasattr(self.algorithm, "before_training_task"):
+            self.algorithm.before_training_task()
+            
+    def on_before_training_epoch(self):
+        super().on_before_training_epoch()
+        if hasattr(self.algorithm, "before_training_epoch"):
+            self.algorithm.before_training_epoch()
+
     def train_algorithm_on_task(self, task: int):
         train_loader = self.algorithm.prepare_train_loader(task)
         optimizer = self.algorithm.prepare_optimizer(task)

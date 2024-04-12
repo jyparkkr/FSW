@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import time
 
 from algorithms.base import Heuristic
-from algorithms.optimization import LS_solver
+from algorithms.optimization import LS_solver, absolute_minsum_LP_solver, absolute_and_nonabsolute_minsum_LP_solver
 
 import copy
 import os
@@ -32,7 +32,7 @@ class Heuristic2(Heuristic):
         for batch_idx, (inp, targ, t_id, *_) in enumerate(loader):
             # self.backbone.forward
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
-            pred, embeds = self.forward_embeds(inp)
+            pred, embeds = self.backbone.forward_embeds(inp)
             self.pred_shape = pred.shape[1]
             self.embeds_shape = embeds.shape[1]
             criterion.reduction = "none"
@@ -89,7 +89,7 @@ class Heuristic2(Heuristic):
 
         return losses, n_grads_all, n_r_new_grads
 
-    def converter(self, losses, alpha, grads_all, new_grads):
+    def converter_LS(self, losses, alpha, grads_all, new_grads, task=None):
         losses = torch.transpose(losses, 0, 1)
         grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
         
@@ -105,13 +105,85 @@ class Heuristic2(Heuristic):
 
         d = alpha*d
         dg = torch.matmul(d.T, new_grads.T)
+        dg, c = dg/(n**2), c/(n**2)
         return dg, c
+
+    def converter_LP_absolute_additional(self, losses, alpha, grads_all, new_grads, task=None):
+        """
+        for LP with linear additional term
+        return A, b, C, d
+        where A, b are linear coefficient for absolute term, C, d are non-absolute term
+        """
+        device = 'cpu'
+        num_current_classes = self.get_num_current_classes(task)
+        losses = torch.transpose(losses, 0, 1)
+        grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
+        
+        n = len(losses)
+        m, dim = new_grads.shape
+
+        c = torch.zeros_like(losses, device=device)
+        d = torch.zeros_like(grads_all, device=device)
+
+        lc = torch.zeros([n, 1], device=device)
+        ld = torch.zeros([grads_all.shape[0], n], device=device)
+
+        for j in range(n):
+            c[j] = n*losses[j] - losses.sum()
+            d[:,j] = n*grads_all[:,j] - grads_all.sum(axis=1)
+
+            lc[j] = losses[j]
+            ld[:,j] = grads_all[:,j]
+
+        d = alpha*d
+        dg = torch.matmul(d.T, new_grads.T)
+
+        dg, c = dg/(n**2), c/(n**2)
+
+        lmbd = self.params.get('lambda', 0.0)
+        lmbd_old = self.params.get('lambda_old', 0.0)
+
+        ld = alpha*ld
+        ldg = torch.matmul(ld.T, new_grads.T)
+
+        ldg, lc = lmbd*ldg, lmbd*lc
+
+        ldg[:n-num_current_classes] = lmbd_old*ldg[:n-num_current_classes]/(n-num_current_classes)
+        ldg[n-num_current_classes:] = ldg[n-num_current_classes:]/num_current_classes
+        lc[:n-num_current_classes] = lmbd_old*lc[:n-num_current_classes]/(n-num_current_classes)
+        lc[n-num_current_classes:] = lc[n-num_current_classes:]/num_current_classes
+        return dg, c, ldg, lc
+
+    def converter_LP_absolute_only(self, losses, alpha, grads_all, new_grads, task=None):
+        A, b, C, d = self.converter_LP_absolute_additional(losses, alpha, grads_all, new_grads, task=task)
+        return torch.concatenate([A, C], axis=0), torch.concatenate([b, d], axis=0)
 
     def prepare_train_loader(self, task_id, epoch=0):
         solver = self.params.get('solver')
-        if solver is None:
+        if (solver is None) or ("absolute_and_nonabsolute" in solver and "LP" in solver):
+            solver = absolute_and_nonabsolute_minsum_LP_solver
+            self.converter = self.converter_LP_absolute_additional
+        elif "absolute" in solver and "LP" in solver:
+            solver = absolute_minsum_LP_solver
+            self.converter = self.converter_LP_absolute_only
+        elif "LS" in solver:
             solver = LS_solver
+            self.converter = self.converter_LS
+        else:
+            raise NotImplementedError
+
+        # if self.params.get('converter') is None:
+        #     pass
+        # elif "v1" in self.params.get('converter'):
+        #     self.converter = self.converter_v1
+        # elif "v2" in self.params.get('converter'):
+        #     self.converter = self.converter_v2
+        # elif "v3" in self.params.get('converter'):
+        #     self.converter = self.converter_v3
+        # else:
+        #     raise NotImplementedError
         print(f"{solver=}")
+        print(f"{self.converter=}")
         return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
 
 

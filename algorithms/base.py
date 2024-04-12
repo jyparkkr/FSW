@@ -29,6 +29,15 @@ class Heuristic(ContinualAlgorithm):
         self.params = params
         super(Heuristic, self).__init__(backbone, benchmark, params, **kwargs)
 
+    def get_num_current_classes(self, task):
+        if task is None:
+            return self.benchmark.num_classes_per_split
+        else:
+            if len(self.benchmark.class_idx) - self.benchmark.num_classes_per_split * task < 0:
+                return len(self.benchmark.class_idx) - self.benchmark.num_classes_per_split * (task-1)
+            else:
+                return self.benchmark.num_classes_per_split
+
     def memory_indices_selection(self, task):
         ## update self.benchmark.memory_indices_train[task] with len self.benchmark.per_task_memory_examples
         indices_train = np.arange(self.per_task_memory_examples)
@@ -65,32 +74,6 @@ class Heuristic(ContinualAlgorithm):
         if self.requires_memory:
             self.update_episodic_memory()
         self.current_task += 1
-
-    def forward_embeds(self, inp):
-        if "MNIST" in self.params['dataset']: #MLP
-            inp = inp.view(inp.shape[0], -1)
-            out = inp
-            for block in self.backbone.blocks:
-                embeds = out
-                out = block(out)
-            return out, embeds
-        elif "ResNet18Small" in str(self.backbone.__class__):
-            bsz = inp.size(0)
-            shape = (bsz, self.backbone.dim, \
-                        self.backbone.input_shape[-2], self.backbone.input_shape[-1])
-            out = relu(self.backbone.bn1(self.backbone.conv1(inp.view(shape))))
-            out = self.backbone.layer1(out)
-            out = self.backbone.layer2(out)
-            out = self.backbone.layer3(out)
-            out = self.backbone.layer4(out)
-            out = avg_pool2d(out, 4)
-            embeds = out.view(out.size(0), -1)
-            out = self.backbone.linear(embeds)
-            return out, embeds
-        else:
-            if hasattr(self.backbone, "forward_embeds"):
-                return self.backbone.forward_embeds(inp)
-            raise NotImplementedError
 
     def get_loss_grad(self):
         raise NotImplementedError
@@ -137,12 +120,9 @@ class Heuristic(ContinualAlgorithm):
         print(f"{losses=}")
         # print(f"{n_grads_all.mean(dim=1)=}")
 
-        A, b = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads)
+        A, b = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads, task=task_id)
         A_np = A.cpu().detach().numpy().astype('float64')
         b_np = b.view(-1).cpu().detach().numpy().astype('float64')
-
-        print(f"{A_np.shape=}")
-        print(f"{b_np.shape=}")
 
         i = time.time()
         weight = solver(A_np, b_np)

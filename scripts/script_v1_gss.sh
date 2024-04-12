@@ -1,21 +1,22 @@
 #!/bin/bash
 
 CURRENT="$PWD"
-DATASET="FashionMNIST" #MNIST FashionMNIST BiasedMNIST
+DATASET="MNIST" #MNIST FashionMNIST BiasedMNIST
 PER_CLASS_EXAMPLE=100000 # np.inf
 TAU=5
-ALPHA=0.00
+ALPHA=0.002
 LAMBDA=0.0
 VERBOSE=2
+METHOD="GSS"
 
 cnt=0
-for SEED in {0..4}; do
-# for SEED in 10; do
+# for SEED in {0..4}; do
+for SEED in 10; do
 for EPOCH in 1 5; do
 for TAU in 1.0 5.0 10.0; do
-for LR in 0.001 0.01; do
-for ALPHA in 0.0; do
-for DATASET in "FashionMNIST" "MNIST"; do
+for LR in 0.001; do
+for ALPHA in 0.0005 0.001 0.002 0.005 0.01 0.02; do
+for LAMBDA in 0.0; do
     if [[ $DATASET == "MNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
@@ -43,7 +44,11 @@ for DATASET in "FashionMNIST" "MNIST"; do
         METRIC="std"
     fi
 
-    EXP_DUMP="dataset=${DATASET}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}_alpha=${ALPHA}"
+    EXP_DUMP="dataset=${DATASET}/GSS/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}"
+    if [[ $LAMBDA != 0.0 ]]; then
+        EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
+    fi
+
     echo "EXP_DUMP:"
     echo "$EXP_DUMP" > /dev/stdout
 
@@ -56,9 +61,10 @@ for DATASET in "FashionMNIST" "MNIST"; do
     sleep 1
     echo "Task Start"  > /dev/stdout
     mkdir -p $OUT_FOLDER
-    ~/anaconda3/envs/cil/bin/python run_gss.py \
+    ~/anaconda3/envs/cil/bin/python run.py \
                            --dataset $DATASET \
                            --model $MODEL \
+                           --method $METHOD \
                            --seed $SEED \
                            --num_task $NUM_TASK \
                            --epochs_per_task $EPOCH \
@@ -72,13 +78,12 @@ for DATASET in "FashionMNIST" "MNIST"; do
                            --learning_rate $LR \
                            --momentum 0.9 \
                            --learning_rate_decay 1.0 \
-                           --algorithm optimization \
                            --metric $METRIC \
                            --fairness_agg "mean" \
                            --alpha $ALPHA \
                            --lambda $LAMBDA \
                            --lambda_old 0 \
-                           --cuda 5 \
+                           --cuda 0 \
                            --verbose $VERBOSE \
                         #    1> $LOG_STDOUT 2> $LOG_STDERR
 done

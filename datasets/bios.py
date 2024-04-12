@@ -1,13 +1,32 @@
 import torchvision
+import torch
 from typing import Any, Callable, Tuple, Optional, Dict, List
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
-from cl_gym.benchmarks.transforms import get_default_mnist_transform
-from cl_gym.benchmarks.mnist import SplitMNIST
+from cl_gym.benchmarks.base import Benchmark
 import numpy as np
+from transformers import BertTokenizer, BertTokenizerFast
+from tqdm import tqdm
+
+import pickle
+
+import os
 
 from .base import SplitDataset2, SplitDataset3
 
-class MNIST(SplitMNIST):
+class BiosDataset(torch.utils.data.Dataset):
+    def __init__(self, data, targets, sensitives):
+        self.data = data
+        self.targets = targets
+        self.sensitives = sensitives
+    
+    def __len__(self):
+        return len(self.targets)
+    
+    def __getitem__(self, idx):
+        return self.data[idx], self.targets[idx], self.sensitives[idx]
+
+
+class Bios(Benchmark):
     def __init__(self,
                  num_tasks: int,
                  per_task_examples: Optional[int] = None,
@@ -17,26 +36,73 @@ class MNIST(SplitMNIST):
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
                  random_class_idx=False):
-        self.num_classes_per_split = 2
-        cls = np.arange(10)
-        if random_class_idx:
-            self.class_idx = np.random.choice(cls, len(cls), replace=False)
-        else:
-            self.class_idx = cls
+        self.num_tasks = num_tasks
+        self.num_classes_per_split = 5
+        self.label_names = [
+            "accountant", "architect", "attorney", "chiropractor", "comedian",
+            "composer", "dentist", "dietitian", "dj", "filmmaker", "interior_designer",
+            "journalist", "model", "nurse", "painter", "paralegal", "pastor",
+            "personal_trainer", "photographer", "physician", "poet", "professor",
+            "psychologist", "rapper", "software_engineer", "surgeon", "teacher",
+            "yoga_teacher"
+        ]
+        self.class_idx = np.array([20, 18, 2, 21, 11, 13, 22, 26, 6, 25, 1, 14, 12, 
+                                    19, 9, 24, 0, 5, 7, 4, 3, 16, 15, 27, 8, 10, 17, 23])
         print(f"{self.class_idx}")
+        self.tokenizer = BertTokenizerFast.from_pretrained(
+            "bert-base-uncased")
         super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
                          per_task_subset_examples, task_input_transforms, task_target_transforms)
+        self.load_datasets()
+        self.prepare_datasets()
+    
+    def _load(self, filename):
+        os.makedirs(filename+".embeddings", exist_ok=True)
+        info = ['BertTokenizerFast', 'bert-base-uncases', 'max_length=32']
+        embedding_path = os.path.join(filename+".embeddings", 
+                                      ".".join(info)+".pkl")
+        if os.path.exists(embedding_path):
+            try:
+                with open(embedding_path, 'rb') as f:
+                    dataset = pickle.load(f)
+            except:
+                os.remove(embedding_path)
+                return self._load(filename)
+        else:
+            with open(filename, "rb") as f:
+                content = pickle.load(f)
 
-    def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        self.mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+            data, y_label, g_label = [], [], []
+            for d, txt, y, g in tqdm(content):
+                text_emb = [self.tokenizer.encode(txt,
+                                                max_length = 32, \
+                                                padding='max_length', \
+                                                truncation=True, \
+                                                add_special_tokens=True)]
+                data.append(text_emb[0])
+                y_label.append(y)
+                g_label.append(g)
+
+            dataset = BiosDataset(torch.tensor(data), np.array(y_label), np.array(g_label))
+            with open(embedding_path, "wb") as f:
+                pickle.dump(dataset, f, pickle.HIGHEST_PROTOCOL)
+
+        return dataset
+
+    def __load_bios(self):
+        train_path = f"{DEFAULT_DATASET_DIR}/bios/train.pkl"
+        test_path = f"{DEFAULT_DATASET_DIR}/bios/test.pkl"
+        dev_path = f"{DEFAULT_DATASET_DIR}/bios/dev.pkl"
+
+        self.bios_train = self._load(train_path)
+        self.bios_test = self._load(test_path)
+        self.bios_dev = self._load(dev_path)
 
     def load_datasets(self):
-        self.__load_mnist()
+        self.__load_bios()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
-            self.tests[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
+            self.trains[task] = SplitDataset3(task, self.num_classes_per_split, self.bios_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset3(task, self.num_classes_per_split, self.bios_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):
         """

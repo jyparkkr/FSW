@@ -31,7 +31,7 @@ class Heuristic1(Heuristic2):
         for batch_idx, (inp, targ, t_id, *_) in enumerate(loader):
             # self.backbone.forward
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
-            pred, embeds = self.forward_embeds(inp)
+            pred, embeds = self.backbone.forward_embeds(inp)
             self.pred_shape = pred.shape[1]
             self.embeds_shape = embeds.shape[1]
             criterion.reduction = "none"

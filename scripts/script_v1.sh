@@ -5,8 +5,9 @@ DATASET="BiasedMNIST" #MNIST FashionMNIST BiasedMNIST
 PER_CLASS_EXAMPLE=100000 # np.inf
 TAU=5
 ALPHA=0.002
-LAMBDA=1.0
+LAMBDA=0.0
 VERBOSE=2
+METHOD="FSW"
 
 cnt=0
 # for SEED in {0..4}; do
@@ -31,7 +32,7 @@ for LAMBDA in 1.0 5.0 10.0; do
         METRIC="std"
     elif [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
-        NUM_TASK=1
+        NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=64
         METRIC="EO"
@@ -44,7 +45,10 @@ for LAMBDA in 1.0 5.0 10.0; do
     fi
 
     EXP_DUMP="dataset=${DATASET}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}_alpha=${ALPHA}"
-    EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
+    if [[ $LAMBDA != 0.0 ]]; then
+        EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
+    fi
+
     echo "EXP_DUMP:"
     echo "$EXP_DUMP" > /dev/stdout
 
@@ -60,6 +64,7 @@ for LAMBDA in 1.0 5.0 10.0; do
     ~/anaconda3/envs/cil/bin/python run.py \
                            --dataset $DATASET \
                            --model $MODEL \
+                           --method $METHOD \
                            --seed $SEED \
                            --num_task $NUM_TASK \
                            --epochs_per_task $EPOCH \
@@ -73,7 +78,6 @@ for LAMBDA in 1.0 5.0 10.0; do
                            --learning_rate $LR \
                            --momentum 0.9 \
                            --learning_rate_decay 1.0 \
-                           --algorithm optimization \
                            --metric $METRIC \
                            --fairness_agg "mean" \
                            --alpha $ALPHA \
