@@ -4,7 +4,7 @@ from typing import Any, Callable, Tuple, Optional, Dict, List
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
 from cl_gym.benchmarks.base import Benchmark
 import numpy as np
-
+ 
 import torch
 
 from .base import SplitDataset2
