@@ -42,7 +42,7 @@ def LS_solver_v2(A: np.array, b: np.array, binary = False):
     soln = np.array([x[i].solution_value for i in range(m)])
     return soln
 
-def minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
+def absolute_minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     """
     Solve Least Square problem below
     min_x max_i |A_i·x - b_i|
@@ -62,12 +62,12 @@ def minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     Return:
         x: np.array of solution
     """
-    print(f"### Cplex minimax LP solver ###")
+    print(f"### Cplex absolute_minimax LP solver ###")
     if A.shape[0] != b.shape[0]:
         raise NotImplementedError
     
     n, m = A.shape
-    model = Model('minimax_LP')
+    model = Model('absolute_minimax_LP')
     x_dict = (i for i in range(m))
 
     if binary:
@@ -86,9 +86,9 @@ def minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     soln = np.array([x[i].solution_value for i in range(m)])
     return soln
 
-def minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
+def absolute_minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     """
-    Solve Least Square problem below
+    Solve absolute Linear Programming below
     min_x sum_i |A_i·x - b_i|
     where
     A_i : ith row vector of A (1-d array size m)
@@ -104,15 +104,15 @@ def minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
         binary: indicates the type of problem
 
     Return:
-        x: np.array of solution
+        x: np.array of solution (length m)
     """
 
-    print(f"### Cplex minsum LP solver ###")
+    print(f"### Cplex absolute_minsum LP solver ###")
     if A.shape[0] != b.shape[0]:
         raise NotImplementedError
     
     n, m = A.shape
-    model = Model('minsum_LP')
+    model = Model('absolute_minsum_LP')
     x_dict = (i for i in range(m))
 
     if binary:
@@ -127,6 +127,61 @@ def minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     c1 = model.add_constraints([-y[i] + y[i+n] + sum(A[i,j]*x[j] for j in range(m)) == b[i] for i in range(n)], names = "eq_")
 
     obj = sum([y[i]+y[i+n] for i in range(n)])
+    model.set_objective("min", obj)
+    # model.print_information()
+    # print(model.export_as_lp_string())
+    model.solve(log_output=False) 
+    soln = np.array([x[i].solution_value for i in range(m)])
+    return soln
+
+def absolute_and_nonabsolute_minsum_LP_solver_v1(
+        A: np.ndarray, b: np.ndarray, C: np.ndarray, d: np.ndarray, binary = False):
+    """
+    Solve absolute Linear Programming below
+    min_x sum_i |A_i·x - b_i| + C_i·x - d_i
+    where
+    A_i : ith row vector of A (1-d array size m)
+    b_i : ith element of b (scalar)
+    Same for C and d
+    x : [..., x_i, ...] (1-d array size m)
+    0 ≤ x_i ≤ 1.
+    Usually, n is number of class and m is number of training set.
+    If binary is True, x_i is 0 or 1. 
+
+    Args:
+        A: given 2-d array size n ⨯ m
+        b: given 1-d array size n
+        C: given 2-d array size n ⨯ m
+        d: given 1-d array size n
+        binary: indicates the type of problem
+
+    Return:
+        x: np.array of solution (length m)
+    """
+
+    print(f"### Cplex absolute_minsum LP solver ###")
+    if A.shape[0] != b.shape[0]:
+        raise NotImplementedError
+    
+    n, m = A.shape
+    model = Model('absolute_and_nonabsolute_minsum__LP')
+    x_dict = (i for i in range(m))
+
+    if binary:
+        x = model.binary_var_dict(x_dict, name = 'x', lb = 0, ub = 1)
+    else:
+        x = model.continuous_var_dict(x_dict, name = 'x', lb = 0, ub = 1)
+    
+    y_dict = (i for i in range(2*n))
+    # first n: y- (where a_i*x_i - b_i = y_i), second n: y+
+    y = model.continuous_var_dict(y_dict, name = 'y', lb = 0)
+    c1 = model.add_constraints([-y[i] + y[i+n] + sum(A[i,j]*x[j] for j in range(m)) == b[i] for i in range(n)], names = "eq_")
+
+    yy_dict = (i for i in range(n))
+    yy = model.continuous_var_dict(yy_dict, name = 'yy', lb = 0)
+    c2 = model.add_constraints([-yy[i] + sum(C[i,j]*x[j] for j in range(m)) == d[i] for i in range(n)], names = "eq2_")
+
+    obj = sum([y[i]+y[i+n]+yy[n] for i in range(n)])
     model.set_objective("min", obj)
     # model.print_information()
     # print(model.export_as_lp_string())

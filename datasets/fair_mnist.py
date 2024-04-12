@@ -124,7 +124,6 @@ class NoiseMNIST(SplitMNIST):
         if task_input_transforms is None:
             task_input_transforms = get_default_mnist_transform(num_tasks)
         self.noise_size = noise_size
-        self.random_class_idx = random_class_idx
 
         cls = np.arange(10)
         if random_class_idx:

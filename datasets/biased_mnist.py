@@ -68,8 +68,8 @@ class BiasedMNIST(MNIST):
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_train)
-            self.tests[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_test)
+            self.trains[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def _modify_dataset(self, dataset, s0_rate):
         if s0_rate < 0.1:
@@ -184,6 +184,7 @@ class BiasedMNIST(MNIST):
             indices_train = self.sample_fair_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
             # indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls_idx, end_cls_idx, num_examples)
             indices_test = self.sample_fair_uniform_class_indices(self.tests[task], start_cls_idx, end_cls_idx, num_examples)
+            # indices_test = self.sample_uniform_class_indices(self.tests[task], start_cls_idx, end_cls_idx, num_examples)
             # assert len(indices_train) == len(indices_test) == self.per_task_memory_examples
             assert len(indices_train) == self.per_task_memory_examples
             self.memory_indices_train[task] = indices_train[:]

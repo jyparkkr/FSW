@@ -37,55 +37,61 @@ def main():
                         per_task_memory_examples=params['per_task_memory_examples'],
                         per_task_examples = params['per_task_examples'],
                         random_class_idx = params['random_class_idx'])
-        input_dim = 28*28
-        num_classes = 10
+        input_dim = (28, 28)
     elif params['dataset'] == 'FashionMNIST':
         benchmark = FashionMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
                                 random_class_idx = params['random_class_idx'])
-        input_dim = 28*28
-        num_classes = 10
-
+        input_dim = (28, 28)
     elif params['dataset'] == 'CIFAR10':
         benchmark = CIFAR10(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
                             random_class_idx = params['random_class_idx'])
-        input_dim = 3*32*32
-        num_classes = 10
-
+        input_dim = (3, 32, 32)
     elif params['dataset'] == 'CIFAR100':        
         benchmark = CIFAR100(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
                             random_class_idx = params['random_class_idx'])
-        input_dim = 3*32*32
-        num_classes = 100
-
+        input_dim = (3, 32, 32)
     elif params['dataset'] in ["BiasedMNIST"]:
         benchmark = BiasedMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
                                 random_class_idx = params['random_class_idx'])
-        input_dim = 3*28*28
-        num_classes = 10
-
+        input_dim = (3, 28, 28)
     else:
         raise NotImplementedError
+    class_idx = benchmark.class_idx
+    num_classes = len(class_idx)
 
     # load backbone, 
     if params['model'] == "MLP": 
-        backbone = cl.backbones.MLP2Layers(
+        from backbones import MLP2Layers2
+        backbone = MLP2Layers2(
             input_dim=input_dim, 
             hidden_dim_1=256, 
             hidden_dim_2=256, 
-            output_dim=num_classes
+            output_dim=num_classes,
+            class_idx=class_idx,
+            config=params
+            ).to(params['device'])
+    elif params['model'] == "resnet18small": 
+        from backbones import ResNet18Small2
+        backbone = ResNet18Small2(
+            input_dim=input_dim, 
+            output_dim=num_classes,
+            class_idx=class_idx,
+            config=params
             ).to(params['device'])
     elif params['model'] == "resnet18": 
-        backbone = cl.backbones.ResNet18Small(
-            num_classes_per_head=num_classes//params['num_tasks'], 
-            num_classes=num_classes, 
+        from backbones import ResNet18
+        backbone = ResNet18(
+            input_dim=input_dim, 
+            output_dim=num_classes,
+            class_idx=class_idx,
             config=params
             ).to(params['device'])
     else:
@@ -93,36 +99,53 @@ def main():
 
     # load algorithm, metric, trainer
     fairness_metrics = ['EO']
+    
     if params['metric'] == "std":
         fair_metric = 'std'
-        if params['algorithm'] == "optimization":
-            from algorithms.imbalance import Heuristic2
-            algorithm = Heuristic2(backbone, benchmark, params, requires_memory=True)
-        elif params['algorithm'] == "greedy":
-            from algorithms.imbalance_greedy import Heuristic1
-            algorithm = Heuristic1(backbone, benchmark, params, requires_memory=True)
         from metrics import MetricCollector2
         from trainers import ContinualTrainer
-        metric_manager_callback = MetricCollector2(num_tasks=params['num_tasks'],
-                                                   eval_interval='epoch',
-                                                   epochs_per_task=params['epochs_per_task'])
-        trainer = ContinualTrainer(algorithm, params, callbacks=[metric_manager_callback])
-    elif params['metric'] == "EO":
-        fair_metric = 'multiclass_eo'
-        if params['algorithm'] == "optimization":
-            from algorithms.sensitive import Heuristic3
-            algorithm = Heuristic3(backbone, benchmark, params, requires_memory=True)
+        MetricCollector = MetricCollector2
+        Trainer = ContinualTrainer
+
+        if params['method'] in ["FSW", 'joint', 'finetune']:
+            from algorithms.imbalance import Heuristic2
+            Algorithm = Heuristic2
+        elif params['method'] in ["FSS"]:
+            from algorithms.imbalance_greedy import Heuristic1
+            Algorithm = Heuristic1
+        elif params['method'] in ["AGEM"]:
+            from algorithms.agem import AGEM
+            Algorithm = AGEM
+        elif params['method'] in ["GSS"]:
+            from algorithms.gss import GSSGreedy
+            from trainers.baselines import BaseMemoryContinualTrainer
+            Algorithm = GSSGreedy
+            Trainer = BaseMemoryContinualTrainer
         else:
             raise NotImplementedError
+        
+    elif params['metric'] == "EO":
+        fair_metric = 'multiclass_eo'
         from metrics import FairMetricCollector
         from trainers.fair_trainer import FairContinualTrainer2
-        metric_manager_callback = FairMetricCollector(num_tasks=params['num_tasks'],
-                                                      eval_interval='epoch',
-                                                      epochs_per_task=params['epochs_per_task'])
-        trainer = FairContinualTrainer2(algorithm, params, callbacks=[metric_manager_callback])
+        MetricCollector = FairMetricCollector
+        Trainer = FairContinualTrainer2
+
+        if params['method'] == "FSW":
+            from algorithms.sensitive import Heuristic3
+            Algorithm = Heuristic3
+        else:
+            raise NotImplementedError
     else:
         raise NotImplementedError
-        
+
+    algorithm = Algorithm(backbone, benchmark, params, requires_memory=True)
+    metric_manager_callback = MetricCollector(num_tasks=params['num_tasks'],
+                                                eval_interval='epoch',
+                                                epochs_per_task=params['epochs_per_task'])
+    trainer = Trainer(algorithm, params, callbacks=[metric_manager_callback])
+
+
     # optimization parameter fix
     if params['metric'] in ["EO"]:
         if params['fairness_agg'] == "mean":

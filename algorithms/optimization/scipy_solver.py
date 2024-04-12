@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from scipy.optimize import linprog, lsq_linear
-from .cplex_solver import minimax_LP_solver_v2, minsum_LP_solver_v2
+from .cplex_solver import absolute_minimax_LP_solver_v2, absolute_minsum_LP_solver_v2
 
 
 def LS_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
@@ -12,7 +12,7 @@ def LS_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
         soln = lsq_linear(A, b, bounds=(0, 1), lsq_solver="lsmr")
     return soln.x
 
-def minimax_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
+def absolute_minimax_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     """
     Solve Least Square problem below
     min_x max_i |A_i·x - b_i|
@@ -32,7 +32,7 @@ def minimax_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     Return:
         x: np.array of solution
     """
-    print(f"### Scipy minimax LP solver ###")
+    print(f"### Scipy absolute_minimax LP solver ###")
     if A.shape[0] != b.shape[0]:
         raise NotImplementedError
     
@@ -48,12 +48,12 @@ def minimax_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     soln = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds)
     if soln.success is not True:
         print(f"{soln.message=}")
-        return minimax_LP_solver_v2(A, b, binary=binary)
+        return absolute_minimax_LP_solver_v2(A, b, binary=binary)
     return soln.x[:-1]
 
-def minsum_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
+def absolute_minsum_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     """
-    Solve Least Square problem below
+    Solve absolute Linear Programming below
     min_x sum_i |A_i·x - b_i|
     where
     A_i : ith row vector of A (1-d array size m)
@@ -71,7 +71,7 @@ def minsum_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     Return:
         x: np.array of solution
     """
-    print(f"### Scipy minsum LP solver ###")
+    print(f"### Scipy absolute_minsum LP solver ###")
     """
     length of solution: m+2*n
     first m: x_i
@@ -92,5 +92,5 @@ def minsum_LP_solver_v3(A: np.ndarray, b: np.ndarray, binary = False):
     soln = linprog(c, A_eq=A_eq, b_eq=b, bounds=bounds)
     if soln.success is not True:
         print(f"{soln.message=}")
-        return minsum_LP_solver_v2(A, b, binary=binary)
+        return absolute_minsum_LP_solver_v2(A, b, binary=binary)
     return soln.x[:m]

@@ -32,7 +32,7 @@ class SplitDataset2(SplitDataset):
 
     def build_split(self, task_id):
         start_class = (task_id-1) * self.num_classes_per_split
-        end_class = task_id * self.num_classes_per_split
+        end_class = min(task_id * self.num_classes_per_split, len(self.class_idx))
         indices = np.zeros_like(self.original_target)
         for c in self.class_idx[start_class:end_class]:
             indices = np.logical_or(indices, self.original_target == c)
@@ -41,7 +41,7 @@ class SplitDataset2(SplitDataset):
 
     def __getitem__(self, index: int):
         idx = self.true_index[index]
-        img, target = self.dataset[idx]
+        img, target, *_ = self.dataset[idx]
         sample_weight = self.sample_weight[index]
         return img, target, self.task_id, index, sample_weight
 

@@ -49,7 +49,6 @@ class CIFAR10(SplitCIFAR):
                  task_target_transforms: Optional[list] = None,
                  random_class_idx=False,
                  is_cifar_100 = False):
-        self.random_class_idx = random_class_idx
         self.is_cifar_100 = is_cifar_100
         self.num_classes_per_split = 100//num_tasks if self.is_cifar_100 else 10//num_tasks
         cls = np.arange(100) if self.is_cifar_100 else np.arange(10)
