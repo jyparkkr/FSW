@@ -234,18 +234,8 @@ class Heuristic3(Heuristic):
         else:
             raise NotImplementedError
 
-        # if self.params.get('converter') is None:
-        #     pass
-        # elif "v1" in self.params.get('converter'):
-        #     self.converter = self.converter_v1
-        # elif "v2" in self.params.get('converter'):
-        #     self.converter = self.converter_v2
-        # elif "v3" in self.params.get('converter'):
-        #     self.converter = self.converter_v3
-        # else:
-        #     raise NotImplementedError
-        print(f"{solver=}")
-        print(f"{self.converter=}")
+        # print(f"{solver=}")
+        # print(f"{self.converter=}")
         return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
 
     def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):

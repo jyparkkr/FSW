@@ -78,7 +78,7 @@ class FairContinualTrainer1(ContinualTrainer1):
         # multiclass_eo = max([abs(avg_(class_acc_s0[c]) - avg_(class_acc_s1[c])) for c in class_acc.keys()])
         multiclass_eo = [abs(avg_(class_acc_s0[c]) - avg_(class_acc_s1[c])) for c in class_acc.keys()]
 
-        return {'accuracy': get_avg(class_acc), 'loss': test_loss, 'multiclass_eo': multiclass_eo, \
+        return {'accuracy': get_avg(class_acc), 'loss': test_loss, 'fairness': multiclass_eo, \
                 'accuracy_s0': get_avg(class_acc_s0), 'accuracy_s1': get_avg(class_acc_s1), \
                 'classwise_accuracy': class_acc}
         

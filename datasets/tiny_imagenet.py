@@ -8,7 +8,6 @@ import numpy as np
 import torch
 
 from .base import SplitDataset2
-from .mnist import MNIST
 
 IMAGENET_MEAN, IMAGENET_STD = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225] # need to check
 
@@ -32,8 +31,8 @@ def get_test_tiny_imagenet_transform(num_tasks: int):
 
 class TinyImageNet(Benchmark):
     """
-    Split FashionMNIST benchmark.
-    The benchmark can have at most 5 tasks, each a binary classification on Fashion MNIST classes.
+    Split TinyImageNet benchmark.
+    The benchmark can have at most 10(?) tasks.
     """
     def __init__(self,
                  num_tasks: int,
@@ -60,8 +59,8 @@ class TinyImageNet(Benchmark):
     def __load_tiny_imagenet(self):
         transforms = self.task_input_transforms[0]
         # NEED TO IMPLEMENT
-        # self.tiny_imagenet_train = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        # self.tiny_imagenet_test = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.tiny_imagenet_train = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
+        self.tiny_imagenet_test = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
         
     def load_datasets(self):
         self.__load_tiny_imagenet()

@@ -83,7 +83,7 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
         avg = 100.0 * np.mean([cor/count for cor, count in class_acc.values()])
         # cor, tot = np.array(list(class_acc.values())).sum(axis=0)
         std = 100.0 * np.std([cor/count for cor, count in class_acc.values()])
-        return {'accuracy': avg, 'loss': test_loss, "std": std}
+        return {'accuracy': avg, 'loss': test_loss, "fairness": std}
     
 class ContinualTrainer2(ContinualTrainer1):
     def train_algorithm_on_task(self, task: int):
