@@ -179,9 +179,9 @@ def absolute_and_nonabsolute_minsum_LP_solver_v1(
 
     yy_dict = (i for i in range(n))
     yy = model.continuous_var_dict(yy_dict, name = 'yy', lb = 0)
-    c2 = model.add_constraints([-yy[i] + sum(C[i,j]*x[j] for j in range(m)) == d[i] for i in range(n)], names = "eq2_")
+    c2 = model.add_constraints([+yy[i] + sum(C[i,j]*x[j] for j in range(m)) == d[i] for i in range(n)], names = "eq2_")
 
-    obj = sum([y[i]+y[i+n]+yy[n] for i in range(n)])
+    obj = sum([y[i]+y[i+n]+yy[i] for i in range(n)])
     model.set_objective("min", obj)
     # model.print_information()
     # print(model.export_as_lp_string())

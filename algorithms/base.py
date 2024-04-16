@@ -120,15 +120,22 @@ class Heuristic(ContinualAlgorithm):
         print(f"{losses=}")
         # print(f"{n_grads_all.mean(dim=1)=}")
 
-        A, b = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads, task=task_id)
-        A_np = A.cpu().detach().numpy().astype('float64')
-        b_np = b.view(-1).cpu().detach().numpy().astype('float64')
+        converter_out = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads, task=task_id)
+        optim_in = list()
+        for i, e in enumerate(converter_out):
+            if i % 2 == 0:
+                e_np = e.cpu().detach().numpy().astype('float64')
+            else:
+                e_np = e.view(-1).cpu().detach().numpy().astype('float64')
+            optim_in.append(e_np)
 
         i = time.time()
-        weight = solver(A_np, b_np)
+        weight = solver(*optim_in)
         
         print(f"Elapsed time:{np.round(time.time()-i, 3)}")
-        print(f"Loss difference:{np.matmul(A_np, weight)-b_np}")
+        print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
+        if len(optim_in) >= 4:
+            print(f"Current class loss:{np.matmul(optim_in[2], weight)-optim_in[3]}")
 
         tensor_weight = torch.tensor(np.array(weight), dtype=torch.float32)
         self.benchmark.update_sample_weight(task_id, tensor_weight)

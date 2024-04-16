@@ -98,42 +98,39 @@ def main():
         raise NotImplementedError
 
     # load algorithm, metric, trainer
-    fairness_metrics = ['EO']
-    
-    if params['metric'] == "std":
-        fair_metric = 'std'
-        from metrics import MetricCollector2
-        from trainers import ContinualTrainer
-        MetricCollector = MetricCollector2
-        Trainer = ContinualTrainer
-
+    fairness_metrics = ['EO', 'DP']
+    if params['metric'] in ["std", "EER"]:
+        from metrics import MetricCollector2 as MetricCollector
+        from trainers import ContinualTrainer as ContinualTrainer
+        if params['metric'] == "std":
+            MetricCollector.fairness_metric = "std"
+        elif params['metric'] == "EER":
+            MetricCollector.fairness_metric = "EER"
+        else:
+            raise AssertionError
         if params['method'] in ["FSW", 'joint', 'finetune']:
-            from algorithms.imbalance import Heuristic2
-            Algorithm = Heuristic2
+            from algorithms.imbalance import Heuristic2 as Algorithm
         elif params['method'] in ["FSS"]:
-            from algorithms.imbalance_greedy import Heuristic1
-            Algorithm = Heuristic1
+            from algorithms.imbalance_greedy import Heuristic1 as Algorithm
         elif params['method'] in ["AGEM"]:
-            from algorithms.agem import AGEM
-            Algorithm = AGEM
+            from algorithms.agem import AGEM as Algorithm
         elif params['method'] in ["GSS"]:
-            from algorithms.gss import GSSGreedy
-            from trainers.baselines import BaseMemoryContinualTrainer
-            Algorithm = GSSGreedy
-            Trainer = BaseMemoryContinualTrainer
+            from algorithms.gss import GSSGreedy as Algorithm
+            from trainers.baselines import BaseMemoryContinualTrainer as ContinualTrainer
         else:
             raise NotImplementedError
-        
-    elif params['metric'] == "EO":
-        fair_metric = 'multiclass_eo'
-        from metrics import FairMetricCollector
-        from trainers.fair_trainer import FairContinualTrainer2
-        MetricCollector = FairMetricCollector
-        Trainer = FairContinualTrainer2
+    elif params['metric'] in fairness_metrics:
+        from metrics import FairMetricCollector as MetricCollector
+        from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
+        if params['metric'] == "EO":
+            MetricCollector.fairness_metric = "EO"
+        elif params['metric'] == "DP":
+            MetricCollector.fairness_metric = "DP"
+        else:
+            raise AssertionError
 
         if params['method'] == "FSW":
-            from algorithms.sensitive import Heuristic3
-            Algorithm = Heuristic3
+            from algorithms.sensitive import Heuristic3 as Algorithm
         else:
             raise NotImplementedError
     else:
@@ -143,23 +140,22 @@ def main():
     metric_manager_callback = MetricCollector(num_tasks=params['num_tasks'],
                                                 eval_interval='epoch',
                                                 epochs_per_task=params['epochs_per_task'])
-    trainer = Trainer(algorithm, params, callbacks=[metric_manager_callback])
+    trainer = ContinualTrainer(algorithm, params, callbacks=[metric_manager_callback])
 
 
     # optimization parameter fix
-    if params['metric'] in ["EO"]:
-        if params['fairness_agg'] == "mean":
-            agg = np.mean
-        elif params['fairness_agg'] == "max":
-            agg = np.max
-        else:
-            raise NotImplementedError
-        metric_manager_callback.meters[fair_metric].agg = agg
+    if params['fairness_agg'] == "mean":
+        agg = np.mean
+    elif params['fairness_agg'] == "max":
+        agg = np.max
+    else:
+        raise NotImplementedError
+    metric_manager_callback.meters["fairness"].agg = agg
 
     # run & save & log metrics
     trainer.run()
     print(f"accuracy:{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}")
-    print(f"fairness:{np.mean(metric_manager_callback.meters[fair_metric].compute_overall())}")
+    print(f"fairness:{np.mean(metric_manager_callback.meters["fairness"].compute_overall())}")
 
     with open(os.path.join(params['output_dir'], 'metrics', 'metrics.pickle'), "wb") as f:
         pickle.dump(metric_manager_callback, f)
@@ -167,11 +163,11 @@ def main():
     with open(os.path.join(params['output_dir'], 'plots', 'output.txt'), "w") as f:
         print(f"accuracy matrix:\n{metric_manager_callback.meters['accuracy'].get_data()}", file=f)
         print(f"avg. acc:\n{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}", file=f)
-        print(f"avg. fairness:\n{np.mean(metric_manager_callback.meters[fair_metric].compute_overall())}", file=f)
+        print(f"avg. fairness:\n{np.mean(metric_manager_callback.meters["fairness"].compute_overall())}", file=f)
 
         if params['metric'] in fairness_metrics:
             print(f"=======classwise {params['metric']}========",end=" ",file=f)
-            for eos in metric_manager_callback.meters[fair_metric].get_data():
+            for eos in metric_manager_callback.meters["fairness"].get_data():
                 for eo in eos:
                     print(round(eo, 3),end=" ",file=f)
                 print(file=f)

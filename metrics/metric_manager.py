@@ -119,7 +119,7 @@ class StdMetric(PerformanceMetric2):
     def compute(self, current_task: int) -> float:
         if current_task < 1:
             raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
-        return self.get_std[current_task+1]
+        return self.get_std()[current_task-1]
 
     def get_data(self, r = 3) -> np.ndarray:
         return np.round(self.get_std(), r)
@@ -128,12 +128,56 @@ class StdMetric(PerformanceMetric2):
         data = self.get_std()
         return np.mean(data)
 
+class EERMetric(PerformanceMetric2):
+    def __init__(self, 
+                 num_tasks: int, 
+                 acc_metric: PerformanceMetric = None,
+                 epochs_per_task: Optional[int] = 1,
+                 per_task_classes: Optional[int] = 2,
+                 ):
+        self.num_tasks = num_tasks
+        self.acc_metric = acc_metric
+        self.epochs_per_task = epochs_per_task
+        self.per_task_classes = per_task_classes
+        # data shape => [(task_learned+1) x (task_evaluated+1) x epoch_per task]
+        # The 0 index is reserved for 'initialization' metrics
+        self.data = np.zeros((num_tasks+1, num_tasks+1, epochs_per_task))
+
+    def update_acc_metric(self, acc_metric: PerformanceMetric):
+        self.acc_metric = acc_metric
+
+    def get_eer(self) -> list:
+        eer = list()
+        # std_data = self.data[1:,1:,-1]
+        acc_data = self.acc_metric.data[1:,1:,-1]
+        for i, e in enumerate(acc_data):
+            task_mean = np.mean(e[:i+1])
+            abs_diff = list()
+            for j in range(i+1):
+                abs_diff.append(np.abs(acc_data[i, j] - task_mean))
+            task_eer = np.mean(abs_diff)
+            # print(task_eer)
+            eer.append(task_eer)
+        return eer
+    
+    def compute(self, current_task: int) -> float:
+        if current_task < 1:
+            raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
+        return self.get_eer()[current_task-1]
+
+    def get_data(self, r = 3) -> np.ndarray:
+        return np.round(self.get_eer(), r)
+
+    def compute_overall(self) -> float:
+        data = self.get_eer()
+        return np.mean(data)
 
 class MetricCollector2(MetricCollector):
     """
     Collects metrics during the learning.
     This callback can support various metrics such as average accuracy/error, and average forgetting.
     """
+    fairness_metric = "EER"
     def __init__(self, num_tasks: int,
                  epochs_per_task: Optional[int] = 1,
                  collect_on_init: bool = False,
@@ -151,6 +195,13 @@ class MetricCollector2(MetricCollector):
             eval_type: Is this a `classification` task or `regression` task?
             tuner_callback: Optional tuner callback than can be called with eval metrics for parameter optimization.
         """
+        if MetricCollector2.fairness_metric.lower() == "eer":
+            self.fairness_metric = EERMetric
+        elif MetricCollector2.fairness_metric.lower() == "std":
+            self.fairness_metric = StdMetric
+        else:
+            raise NotImplementedError
+        
         super().__init__(num_tasks, epochs_per_task = epochs_per_task, collect_on_init = collect_on_init,
                         collect_metrics_for_future_tasks = collect_metrics_for_future_tasks,
                          eval_interval = eval_interval, eval_type = eval_type, tuner_callback = tuner_callback)
@@ -158,10 +209,10 @@ class MetricCollector2(MetricCollector):
     def _prepare_meters(self) -> Dict[str, ContinualMetric]:
         if self.eval_type == 'classification':
             metrics = {'accuracy': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
-                    'std': StdMetric(self.num_tasks, epochs_per_task = self.epochs_per_task),
+                    'fairness': self.fairness_metric(self.num_tasks, epochs_per_task = self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
-            metrics['std'].update_acc_metric(metrics['accuracy'])
+            metrics['fairness'].update_acc_metric(metrics['accuracy'])
             return metrics
         else:
             return {'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
@@ -170,7 +221,7 @@ class MetricCollector2(MetricCollector):
         if self.eval_type == 'classification':
             self.meters['loss'].update(task_learned, task_evaluated, metrics['loss'], relative_step)
             self.meters['accuracy'].update(task_learned, task_evaluated, metrics['accuracy'], relative_step)
-            self.meters['std'].update(task_learned, task_evaluated, metrics['std'], relative_step)
+            self.meters['fairness'].update(task_learned, task_evaluated, metrics['fairness'], relative_step)
             self.meters['forgetting'].update(task_learned, task_evaluated, metrics['accuracy'], relative_step)
         else:
             self.meters['loss'].update(task_learned, task_evaluated, metrics['loss'], relative_step)
@@ -181,7 +232,7 @@ class MetricCollector2(MetricCollector):
         
         if self.eval_type == 'classification':
             trainer.logger.log_metric(f'acc_{task_evaluated}', round(metrics['accuracy'], 2), global_step)
-            trainer.logger.log_metric(f'std_{task_evaluated}', round(metrics['std'], 2), global_step)
+            trainer.logger.log_metric(f'fairness_{task_evaluated}', round(metrics['fairness'], 2), global_step)
             trainer.logger.log_metric(f'loss_{task_evaluated}', round(metrics['loss'], 2), global_step)
             if trainer.current_task > 0:
                 avg_acc = round(self.meters['accuracy'].compute(trainer.current_task), 2)
@@ -221,5 +272,3 @@ class MetricCollector2(MetricCollector):
             filepath = os.path.join(self.save_paths['metrics'], metric + ".npy")
             with open(filepath, 'wb') as f:
                 np.save(f, self.meters[metric].data)
-
-

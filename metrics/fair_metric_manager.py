@@ -14,12 +14,12 @@ class FairnessMetric(GeneralMetric):
         super().__init__(*args, **kwargs)
         self.agg = kwargs.get('agg', np.max)
     
-
 class FairMetricCollector(MetricCollector):
     """
     Collects metrics during the learning.
     This callback can support various metrics such as average accuracy/error, and average forgetting.
     """
+    fairness_metric = "EO"
     def __init__(self, num_tasks: int,
                  epochs_per_task: Optional[int] = 1,
                  collect_on_init: bool = False,
@@ -37,6 +37,13 @@ class FairMetricCollector(MetricCollector):
             eval_type: Is this a `classification` task or `regression` task?
             tuner_callback: Optional tuner callback than can be called with eval metrics for parameter optimization.
         """
+        if FairMetricCollector.fairness_metric.lower() == "eo":
+            self.fairness_metric = FairnessMetric
+        elif FairMetricCollector.fairness_metric.lower() == "dp":
+            self.fairness_metric = FairnessMetric
+        else:
+            raise NotImplementedError
+
         super().__init__(num_tasks, epochs_per_task = epochs_per_task, collect_on_init = collect_on_init,
                         collect_metrics_for_future_tasks = collect_metrics_for_future_tasks,
                          eval_interval = eval_interval, eval_type = eval_type, tuner_callback = tuner_callback)
@@ -47,7 +54,7 @@ class FairMetricCollector(MetricCollector):
                     'accuracy_s0': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'accuracy_s1': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'classwise_accuracy': ClasswiseAccuracy(self.num_tasks, self.epochs_per_task),
-                    'multiclass_eo': FairnessMetric(self.num_tasks, self.epochs_per_task),
+                    'fairness': FairnessMetric(self.num_tasks, self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
         else:
@@ -60,7 +67,7 @@ class FairMetricCollector(MetricCollector):
             self.meters['accuracy_s0'].update(task_learned, task_evaluated, metrics['accuracy_s0'], relative_step)
             self.meters['accuracy_s1'].update(task_learned, task_evaluated, metrics['accuracy_s1'], relative_step)
             self.meters['classwise_accuracy'].update(task_learned, task_evaluated, metrics['classwise_accuracy'], relative_step)
-            self.meters['multiclass_eo'].update(task_learned, task_evaluated, metrics['multiclass_eo'], relative_step)
+            self.meters['fairness'].update(task_learned, task_evaluated, metrics['fairness'], relative_step)
             self.meters['forgetting'].update(task_learned, task_evaluated, metrics['accuracy'], relative_step)
         else:
             self.meters['loss'].update(task_learned, task_evaluated, metrics['loss'], relative_step)
@@ -73,7 +80,7 @@ class FairMetricCollector(MetricCollector):
             trainer.logger.log_metric(f'acc_{task_evaluated}', round(metrics['accuracy'], 2), global_step)
             trainer.logger.log_metric(f'acc_s0_{task_evaluated}', round(metrics['accuracy_s0'], 2), global_step)
             trainer.logger.log_metric(f'acc_s1_{task_evaluated}', round(metrics['accuracy_s1'], 2), global_step)
-            # trainer.logger.log_metric(f'multi_eo_{task_evaluated}', round(metrics['multiclass_eo'], 2), global_step)
+            # trainer.logger.log_metric(f'multi_eo_{task_evaluated}', round(metrics['fairness'], 2), global_step)
             trainer.logger.log_metric(f'loss_{task_evaluated}', round(metrics['loss'], 2), global_step)
             if trainer.current_task > 0:
                 avg_acc = round(self.meters['accuracy'].compute(trainer.current_task), 2)
