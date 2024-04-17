@@ -6,5 +6,5 @@ from cl_gym.algorithms import AGEM as AGEM_prev
 from .baselines import BaseContinualAlgoritm
 
 class AGEM(AGEM_prev, BaseContinualAlgoritm):
-    pass
-
+    def __init__(self, backbone, benchmark, params, requires_memory=True):
+        super().__init__(backbone, benchmark, params)

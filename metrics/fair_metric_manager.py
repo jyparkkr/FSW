@@ -12,7 +12,7 @@ from .metric_manager import PerformanceMetric2, GeneralMetric, ClasswiseAccuracy
 class FairnessMetric(GeneralMetric):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.agg = kwargs.get('agg', np.max)
+        self.agg = kwargs.get('agg', FairnessMetric.agg)
     
 class FairMetricCollector(MetricCollector):
     """
@@ -37,12 +37,6 @@ class FairMetricCollector(MetricCollector):
             eval_type: Is this a `classification` task or `regression` task?
             tuner_callback: Optional tuner callback than can be called with eval metrics for parameter optimization.
         """
-        if FairMetricCollector.fairness_metric.lower() == "eo":
-            self.fairness_metric = FairnessMetric
-        elif FairMetricCollector.fairness_metric.lower() == "dp":
-            self.fairness_metric = FairnessMetric
-        else:
-            raise NotImplementedError
 
         super().__init__(num_tasks, epochs_per_task = epochs_per_task, collect_on_init = collect_on_init,
                         collect_metrics_for_future_tasks = collect_metrics_for_future_tasks,
@@ -54,7 +48,8 @@ class FairMetricCollector(MetricCollector):
                     'accuracy_s0': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'accuracy_s1': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'classwise_accuracy': ClasswiseAccuracy(self.num_tasks, self.epochs_per_task),
-                    'fairness': FairnessMetric(self.num_tasks, self.epochs_per_task),
+                    'EO': FairnessMetric(self.num_tasks, self.epochs_per_task),
+                    'DP': FairnessMetric(self.num_tasks, self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
         else:
@@ -67,7 +62,8 @@ class FairMetricCollector(MetricCollector):
             self.meters['accuracy_s0'].update(task_learned, task_evaluated, metrics['accuracy_s0'], relative_step)
             self.meters['accuracy_s1'].update(task_learned, task_evaluated, metrics['accuracy_s1'], relative_step)
             self.meters['classwise_accuracy'].update(task_learned, task_evaluated, metrics['classwise_accuracy'], relative_step)
-            self.meters['fairness'].update(task_learned, task_evaluated, metrics['fairness'], relative_step)
+            self.meters['EO'].update(task_learned, task_evaluated, metrics['EO'], relative_step)
+            self.meters['DP'].update(task_learned, task_evaluated, metrics['DP'], relative_step)
             self.meters['forgetting'].update(task_learned, task_evaluated, metrics['accuracy'], relative_step)
         else:
             self.meters['loss'].update(task_learned, task_evaluated, metrics['loss'], relative_step)

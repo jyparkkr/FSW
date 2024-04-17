@@ -35,7 +35,7 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
         pass
 
     def prepare_train_loader(self, task_id):
-        num_workers = self.params.get('num_dataloader_workers', 0)
+        num_workers = self.params.get('num_dataloader_workers', 4)
         return self.benchmark.load(task_id, self.params['batch_size_train'],
                                    num_workers=num_workers, pin_memory=True)[0]
 

@@ -37,9 +37,9 @@ class GSSGreedy(BaseMemoryContinualAlgoritm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2
-        self.mem_strength = 20 # hyperparameter (?)
-        self.gss_batch_size = 10 # Random sampling batch size to estimate score
         self.params = args[2]
+        self.mem_strength = self.params['batch_size_train']*2 # hyperparameter
+        self.gss_batch_size = self.params['batch_size_train'] # Random sampling batch size to estimate score
         self.device = self.params['device']
         self.mem_size = self.params['per_task_memory_examples']
         self.buffer_score = torch.FloatTensor(self.mem_size).fill_(0).to(self.device)

@@ -9,7 +9,7 @@ from datasets import __all__ as dataset_list, fairness_dataset
 model_pool = ["MLP", "resnet18", "resnet18small"]
 optimizer_pool = ["sgd", "adam"]
 algorithm_pool = ["optimization", "greedy"]
-metric_pool = ["std", "EO"]
+metric_pool = ["std", "EER", "EO", "DP", "no_metrics"]
 method_pool = ['FSW', "FSS", 'joint', 'finetune', 'AGEM', "GSS"]
 
 def parse_option():
@@ -76,6 +76,10 @@ def parse_option():
         if opt.dataset not in fairness_dataset:
             raise ValueError(f"Wrong dataset({opt.dataset}) for corresponding metric({opt.metric}).")
         
+    if opt.method == "GSS":
+        if opt.batch_size_train >= opt.per_task_memory_examples:
+            raise ValueError(f"For GSS, {opt.batch_size_train=} should be smaller than {opt.per_task_memory_examples=} .")
+        
     return opt
 
 def make_params(args) -> dict:
@@ -109,6 +113,9 @@ def make_params(args) -> dict:
     elif params['method'] == 'vanilla':
         params['alpha'] == 0
     trial_id = os.path.join(trial_id, f"{params['method']}")
+
+    # define metrics
+    trial_id = os.path.join(trial_id, f"{params['metric']}")
 
     # add hyperparameters
     trial_id = os.path.join(trial_id, \

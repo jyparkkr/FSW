@@ -33,7 +33,7 @@ class Heuristic1(Heuristic2):
             gradient 계산 (W, b)
         Return train loader
         """
-        num_workers = self.params.get('num_dataloader_workers', 0)
+        num_workers = self.params.get('num_dataloader_workers', 4)
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
@@ -139,6 +139,6 @@ class Heuristic1(Heuristic2):
 
         self.benchmark.seq_indices_train[task_id] = select_curr_indexes
         
-        num_workers = self.params.get('num_dataloader_workers', 0)
+        num_workers = self.params.get('num_dataloader_workers', 4)
         return self.benchmark.load(task_id, self.params['batch_size_train'],
                                    num_workers=num_workers, pin_memory=True)[0]

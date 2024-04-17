@@ -71,14 +71,15 @@ class FairContinualTrainer1(ContinualTrainer1):
         test_loss /= total
         # def get_avg(cor_count):
         #     return 100.0 * np.mean([cor/count for cor, count in cor_count.values()])
-        get_avg = lambda cor_count: 100.0 * np.mean([cor/count for cor, count in cor_count.values()])
+        get_avg = lambda cor_count: np.mean([cor/count for cor, count in cor_count.values()])
         # avg = get_avg(class_acc)
         # cor, tot = np.array(list(class_acc.values())).sum(axis=0)
         avg_ = lambda cor_count: cor_count[0]/cor_count[1]
         # multiclass_eo = max([abs(avg_(class_acc_s0[c]) - avg_(class_acc_s1[c])) for c in class_acc.keys()])
         multiclass_eo = [abs(avg_(class_acc_s0[c]) - avg_(class_acc_s1[c])) for c in class_acc.keys()]
-
-        return {'accuracy': get_avg(class_acc), 'loss': test_loss, 'fairness': multiclass_eo, \
+        # TODO
+        multiclass_dp = None
+        return {'accuracy': get_avg(class_acc), 'loss': test_loss, 'EO': multiclass_eo, 'DP': multiclass_dp, \
                 'accuracy_s0': get_avg(class_acc_s0), 'accuracy_s1': get_avg(class_acc_s1), \
                 'classwise_accuracy': class_acc}
         

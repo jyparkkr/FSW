@@ -88,7 +88,7 @@ class Heuristic3(Heuristic):
         return classwise_loss_all, classwise_grad_all, new_grads
     
     def get_loss_grad_all(self, task_id):
-        num_workers = self.params.get('num_dataloader_workers', 0)
+        num_workers = self.params.get('num_dataloader_workers', 4)
 
         classwise_loss_all, classwise_grad_all, _ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,

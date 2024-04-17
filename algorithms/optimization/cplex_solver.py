@@ -1,7 +1,15 @@
 import numpy as np
 from docplex.mp.model import Model
+from docplex.mp.context import Context
+
+def default_cplex_setting():
+    # Create a context and set the 'threads' parameter
+    context = Context.make_default_context()
+    context.cplex_parameters.threads = 4  # Set the number of threads to 5
+
 
 def LS_solver_v2(A: np.array, b: np.array, binary = False):
+    default_cplex_setting()
     """
     Solve Least Square problem below
     min_x (Ax - b)**2 
@@ -43,6 +51,7 @@ def LS_solver_v2(A: np.array, b: np.array, binary = False):
     return soln
 
 def absolute_minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
+    default_cplex_setting()
     """
     Solve Least Square problem below
     min_x max_i |A_i·x - b_i|
@@ -87,6 +96,7 @@ def absolute_minimax_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
     return soln
 
 def absolute_minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
+    default_cplex_setting()
     """
     Solve absolute Linear Programming below
     min_x sum_i |A_i·x - b_i|
@@ -136,6 +146,7 @@ def absolute_minsum_LP_solver_v2(A: np.ndarray, b: np.ndarray, binary = False):
 
 def absolute_and_nonabsolute_minsum_LP_solver_v1(
         A: np.ndarray, b: np.ndarray, C: np.ndarray, d: np.ndarray, binary = False):
+    default_cplex_setting()
     """
     Solve absolute Linear Programming below
     min_x sum_i |A_i·x - b_i| + C_i·x - d_i
@@ -159,7 +170,7 @@ def absolute_and_nonabsolute_minsum_LP_solver_v1(
         x: np.array of solution (length m)
     """
 
-    print(f"### Cplex absolute_minsum LP solver ###")
+    print(f"### Cplex absolute_and_nonabsolute_minsum LP solver ###")
     if A.shape[0] != b.shape[0]:
         raise NotImplementedError
     
