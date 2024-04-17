@@ -21,6 +21,7 @@ def main():
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
+    torch.set_num_threads(4)
     # torch.backends.cudnn.enabled = False
 
     if opt.cuda is not None:
@@ -98,7 +99,7 @@ def main():
         raise NotImplementedError
 
     # load algorithm, metric, trainer
-    fairness_metrics = ['EO', 'DP']
+    fairness_metrics = ["std", "EER", "EO", "DP"]
     if params['metric'] in ["std", "EER"]:
         from metrics import MetricCollector2 as MetricCollector
         from trainers import ContinualTrainer as ContinualTrainer
@@ -117,9 +118,10 @@ def main():
         elif params['method'] in ["GSS"]:
             from algorithms.gss import GSSGreedy as Algorithm
             from trainers.baselines import BaseMemoryContinualTrainer as ContinualTrainer
+            # for GSS, batch size should be smaller than per_task_memory size
         else:
             raise NotImplementedError
-    elif params['metric'] in fairness_metrics:
+    elif params['metric'] in ["EO", "DP"]:
         from metrics import FairMetricCollector as MetricCollector
         from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
         if params['metric'] == "EO":
@@ -150,28 +152,27 @@ def main():
         agg = np.max
     else:
         raise NotImplementedError
-    metric_manager_callback.meters["fairness"].agg = agg
-
+    for metric in metric_manager_callback.meters:
+        if metric in fairness_metrics:
+            metric_manager_callback.meters[metric].agg = agg
+            
     # run & save & log metrics
     trainer.run()
     print(f"accuracy:{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}")
-    print(f"fairness:{np.mean(metric_manager_callback.meters["fairness"].compute_overall())}")
+    for metric in metric_manager_callback.meters:
+        if metric in fairness_metrics:
+            print(f"{metric}:\n{np.mean(metric_manager_callback.meters[metric].compute_overall())}")        
 
     with open(os.path.join(params['output_dir'], 'metrics', 'metrics.pickle'), "wb") as f:
         pickle.dump(metric_manager_callback, f)
 
     with open(os.path.join(params['output_dir'], 'plots', 'output.txt'), "w") as f:
-        print(f"accuracy matrix:\n{metric_manager_callback.meters['accuracy'].get_data()}", file=f)
-        print(f"avg. acc:\n{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}", file=f)
-        print(f"avg. fairness:\n{np.mean(metric_manager_callback.meters["fairness"].compute_overall())}", file=f)
-
-        if params['metric'] in fairness_metrics:
-            print(f"=======classwise {params['metric']}========",end=" ",file=f)
-            for eos in metric_manager_callback.meters["fairness"].get_data():
-                for eo in eos:
-                    print(round(eo, 3),end=" ",file=f)
-                print(file=f)
-        
+        for metric in metric_manager_callback.meters:
+            if metric == "accuracy":
+                print(f"accuracy matrix:\n{metric_manager_callback.meters['accuracy'].get_data()}", file=f)
+                print(f"avg. acc:\n{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}", file=f)
+            elif metric in fairness_metrics:
+                print(f"avg. {metric}:\n{np.mean(metric_manager_callback.meters[metric].compute_overall())}", file=f)        
 
 if __name__ == '__main__':
     main()

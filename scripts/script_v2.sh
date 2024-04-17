@@ -1,11 +1,11 @@
 #!/bin/bash
 
 CURRENT="$PWD"
-DATASET="BiasedMNIST" #MNIST FashionMNIST BiasedMNIST
+DATASET="MNIST" #MNIST FashionMNIST BiasedMNIST
 PER_CLASS_EXAMPLE=100000 # np.inf
 TAU=5
 ALPHA=0.002
-LAMBDA=0.0
+LAMBDA=0.01
 VERBOSE=2
 METHOD="FSW"
 
@@ -23,13 +23,13 @@ for LAMBDA in 1.0 5.0 10.0; do
         PER_TASK_CLASS=2
         PER_CLASS_EXAMPLE=5000
         BUFFER_PER_CLASS=32
-        METRIC="std"
+        METRIC="EER"
     elif [[ $DATASET == "FashionMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
-        METRIC="std"
+        METRIC="EER"
     elif [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
@@ -44,8 +44,7 @@ for LAMBDA in 1.0 5.0 10.0; do
         METRIC="std"
     fi
 
-    EXP_DUMP="dataset=${DATASET}"
-    EXP_DUMP="${EXP_DUMP}/${METHOD}"
+    EXP_DUMP="dataset=${DATASET}/${METHOD}/${METRIC}"
     EXP_DUMP="${EXP_DUMP}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}_alpha=${ALPHA}"
     if [[ $LAMBDA != 0.0 ]]; then
         EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
@@ -85,7 +84,7 @@ for LAMBDA in 1.0 5.0 10.0; do
                            --alpha $ALPHA \
                            --lambda $LAMBDA \
                            --lambda_old 0 \
-                           --cuda 0 \
+                           --cuda 7 \
                            --verbose $VERBOSE \
                         #    1> $LOG_STDOUT 2> $LOG_STDERR
 done
