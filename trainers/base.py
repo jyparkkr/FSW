@@ -37,13 +37,12 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, indices, sample_weight, *_ = items
-                # if batch_idx == 0:
-                #     print(f"{sample_weight.to(device)=}")
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, _, sample_weight, *_ = item_to_devices
                 self.on_before_training_step()
                 self.tick('step')
-                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device))
+                self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, 
+                                             sample_weight=sample_weight)
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()
@@ -67,8 +66,8 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
             for items in eval_loader:
-                inp, targ, task_ids, *_ = items
-                inp, targ, task_ids = inp.to(device), targ.to(device), task_ids.to(device)
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, *_ = item_to_devices
                 pred = self.algorithm.backbone(inp, task_ids)
                 total += len(targ)
                 test_loss += criterion(pred, targ).item()
@@ -99,13 +98,12 @@ class ContinualTrainer2(ContinualTrainer1):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, indices, sample_weight, *_ = items
-                # if batch_idx == 0:
-                #     print(f"{sample_weight.to(device)=}")
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, _, sample_weight, *_ = item_to_devices
                 self.on_before_training_step()
                 self.tick('step')
-                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device))
+                self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, \
+                                             sample_weight=sample_weight)
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()

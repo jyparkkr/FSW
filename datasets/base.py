@@ -10,7 +10,7 @@ def tranform_on_idx(data, idx, transform):
     data[idx] = transformed
     return data
 
-class SplitDataset2(SplitDataset):
+class SplitDataset1(SplitDataset):
     def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         self.task_id = task_id
         self.num_classes_per_split = num_classes_per_split
@@ -87,8 +87,13 @@ class SplitDataset2(SplitDataset):
         self.targets[idx] = y.clone().cpu().numpy()
         self.sample_weight[idx] = weight.clone()
 
+class SplitDataset2(SplitDataset1):
+    def __getitem__(self, index: int):
+        img, target, task_id, idx, sample_weight = super().__getitem__(index)
+        return img, target, task_id, idx, sample_weight, target # target as sensitive attribute
 
-class SplitDataset3(SplitDataset2):
+
+class SplitDataset3(SplitDataset1):
     def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         super().__init__(task_id, num_classes_per_split, dataset, class_idx = class_idx)
 
@@ -100,7 +105,6 @@ class SplitDataset3(SplitDataset2):
         img, target, task_id, idx, sample_weight = super().__getitem__(index)
         sen = int(self.sensitives[index])
         return img, target, task_id, idx, sample_weight, sen
-
 
 # For biasedMNIST
 class SplitDataset4(SplitDataset3):

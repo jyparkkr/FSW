@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.nn.functional import relu, avg_pool2d
-
+import random
 import cl_gym
 from typing import Optional, Dict, Iterable
 
@@ -12,6 +12,7 @@ from .base import select_output_head
 class ResNet2(ResNet):
     def __init__(self, input_dim: tuple, num_classes: int, multi_head: bool, num_classes_per_head: int, class_idx, block, num_blocks, nf, config: Dict = ...):
         super(ResNet, self).__init__(multi_head, num_classes_per_head)
+
         self.in_planes = nf
         self.dim = input_dim[0]
         self.output_dim = num_classes

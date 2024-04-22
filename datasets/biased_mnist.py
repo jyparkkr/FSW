@@ -4,10 +4,11 @@
 import torch
 import torchvision
 import numpy as np
+import random
 from typing import Optional, Tuple, List
 
 from .mnist import MNIST
-from .base import SplitDataset2, SplitDataset3, SplitDataset4
+from .base import SplitDataset1, SplitDataset3, SplitDataset4
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
 
 COLOR_MAP = {

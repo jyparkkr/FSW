@@ -11,7 +11,7 @@ import pickle
 
 import os
 
-from .base import SplitDataset2, SplitDataset3
+from .base import SplitDataset1, SplitDataset3
 
 class BiosDataset(torch.utils.data.Dataset):
     def __init__(self, data, targets, sensitives):

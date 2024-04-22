@@ -135,7 +135,7 @@ class FaIRL(Heuristic3):
         super().__init__(backbone, benchmark, params, **kwargs)
 
     def prepare_train_loader(self, task_id):
-        # num_workers = self.params.get('num_dataloader_workers', 4)
+        # num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         # return self.benchmark.load(task_id, self.params['batch_size_train'],
         #                            num_workers=num_workers, pin_memory=True)[0]
         return super(Heuristic, self).prepare_train_loader(task_id)

@@ -21,8 +21,10 @@ def main():
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(4)
-    # torch.backends.cudnn.enabled = False
+    torch.set_num_threads(6)
+    torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.benchmark = False
+
 
     if opt.cuda is not None:
         torch.cuda.set_device(opt.cuda)
@@ -102,7 +104,7 @@ def main():
     fairness_metrics = ["std", "EER", "EO", "DP"]
     if params['metric'] in ["std", "EER"]:
         from metrics import MetricCollector2 as MetricCollector
-        from trainers import ContinualTrainer as ContinualTrainer
+        from trainers.imbalance_trainer import ImbalanceContinualTrainer1 as ContinualTrainer
         if params['metric'] == "std":
             MetricCollector.fairness_metric = "std"
         elif params['metric'] == "EER":
