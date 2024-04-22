@@ -1,13 +1,8 @@
 import torch
 import numpy as np
 
-from torch import nn
-from torch import optim
-from torch.nn import functional as F
+from torch.utils.data import Dataset, DataLoader
 from cl_gym.algorithms import ContinualAlgorithm
-from cl_gym.algorithms.agem import AGEM
-from cl_gym.algorithms.utils import flatten_grads, assign_grads
-from torch.nn.functional import relu, avg_pool2d
 import matplotlib.pyplot as plt
 import time
 
@@ -96,7 +91,7 @@ class Heuristic(ContinualAlgorithm):
         각 batch별 loss와 std를 가장 낮게 하는 (하나)의 sample만 취해서 학습에 사용
         Return train loader
         """
-        num_workers = self.params.get('num_dataloader_workers', 4)
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
@@ -113,7 +108,7 @@ class Heuristic(ContinualAlgorithm):
             self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
-        losses, n_grads_all, n_r_new_grads = self.get_loss_grad_all(task_id) 
+        losses, n_grads_all, n_r_new_grads, new_batch = self.get_loss_grad_all(task_id) 
         # n_grads_all: (class_num) * (weight&bias 차원수)
         # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수)
 
@@ -135,9 +130,11 @@ class Heuristic(ContinualAlgorithm):
         print(f"Elapsed time:{np.round(time.time()-i, 3)}")
         print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
         if len(optim_in) >= 4:
-            print(f"Current class loss:{np.matmul(optim_in[2], weight)-optim_in[3]}")
+            print(f"Current class expected loss:{np.matmul(optim_in[2], weight)-optim_in[3]}")
 
         tensor_weight = torch.tensor(np.array(weight), dtype=torch.float32)
+
+
         self.benchmark.update_sample_weight(task_id, tensor_weight)
 
         # Need to update self.benchmark.seq_indices_train[task] - to ignore weight = 0
@@ -148,13 +145,75 @@ class Heuristic(ContinualAlgorithm):
         if hasattr(self.benchmark.trains[task_id], "sensitive"):
             print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
 
+        # return self.benchmark.load(task_id, self.params['batch_size_train'],
+        #                            num_workers=num_workers, pin_memory=True)[0]
 
-        # for debugging
-        os.makedirs(f"{self.params['output_dir']}/figs", exist_ok=True)
-        plt.hist(weight, color = "green", alpha = 0.4, bins = 100, edgecolor="black")
-        plt.axvline(drop_threshold, color='black', linestyle='dashed')
-        plt.savefig(f"{self.params['output_dir']}/figs/tid_{task_id}_epoch_{epoch}_weight_distribution.png")
-        plt.clf()
+        lists = [list() for _ in new_batch[0]]
+        for items in new_batch:
+            for i, item in enumerate(items):
+                lists[i].append(item)
+
+        args = list()
+        for arg in lists:
+            cat = torch.cat(arg, dim=0)
+            args.append(cat)
+        args[4] = tensor_weight
+
+        # for weight figure drawing
+        if self.params['dataset'] in ["BiasedMNIST"]:
+            sen_weight = dict()
+            sen_weight[0] = args[4][args[5]==args[1]].cpu().detach().numpy()
+            sen_weight[1] = args[4][args[5]!=args[1]].cpu().detach().numpy()
+        else:
+            sen_labels = torch.unique(args[5])
+            sen_weight = {sen.item():None for sen in sen_labels}
+            for k in sen_weight:
+                sen_weight[k] = args[4][args[5]==k].cpu().detach().numpy()
+        draw_figs(sen_weight, self.params['output_dir'], drop_threshold, \
+                  self.params['per_task_examples'], task_id, epoch)
         
-        return self.benchmark.load(task_id, self.params['batch_size_train'],
-                                   num_workers=num_workers, pin_memory=True)[0]
+        # drop the samples below the threshold
+        for i, e in enumerate(args):
+            args[i] = e[np.array(weight)>drop_threshold]
+
+        dataset  = WeightModifiedDataset(*args)
+        train_loader = DataLoader(dataset, self.params['batch_size_train'], False, num_workers=num_workers,
+                                  pin_memory=True)
+        
+        return train_loader
+
+class WeightModifiedDataset(Dataset):
+    def __init__(self, *args):
+        self.arglen = len(args)
+        self.args = args
+
+    def __len__(self):
+        return len(self.args[0])
+    
+    def __getitem__(self, idx):
+        return tuple(arg[idx] for arg in self.args)
+    
+
+def draw_figs(weight_dict, output_dir, drop_threshold, y_lim, tid, epoch):
+    num_bins = 20
+    bins = np.arange(0, 1+1/num_bins, 1/num_bins)
+    plt.rcParams["font.family"] = "Times New Roman"
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rc('font', size=15)
+    plt.rc('axes', labelsize=15)
+    plt.rc('xtick', labelsize=15)
+    plt.rc('ytick', labelsize=15)
+    plt.rc('legend', fontsize=15)
+    plt.rc('figure', titlesize=15)
+    plt.hist([x for x in weight_dict.values()], bins, stacked=True, \
+             edgecolor='black', histtype='bar', label=list(weight_dict.keys()))
+    plt.xlim([0, 1])
+    plt.ylim([0, y_lim])
+    plt.xlabel('Weight')
+    plt.ylabel('Number of samples')
+    plt.legend(loc='upper center')
+    # plt.axvline(drop_threshold, color='black', linestyle='dashed')
+    os.makedirs(f"{output_dir}/figs", exist_ok=True)
+    plt.savefig(f"{output_dir}/figs/tid_{tid}_epoch_{epoch}_weight_distribution.pdf", bbox_inches="tight")
+    # plt.show()
+    plt.clf()

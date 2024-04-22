@@ -131,7 +131,7 @@ class Heuristic3(Heuristic2):
         return sensitive_loss, sensitive_grad_dict, new_grads
     
     def get_loss_grad_all(self, task_id):
-        num_workers = self.params.get('num_dataloader_workers', 4)
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
         sensitive_loss, sensitive_grad_dict, _ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
@@ -170,7 +170,7 @@ class Heuristic3(Heuristic2):
         각 batch별 loss와 std를 가장 낮게 하는 (하나)의 sample만 취해서 학습에 사용
         Return train loader
         """
-        num_workers = self.params.get('num_dataloader_workers', 4)
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
@@ -247,7 +247,7 @@ class Heuristic3(Heuristic2):
         select_curr_indexes = list(set(select_curr_indexes))
         self.benchmark.seq_indices_train[task_id] = select_curr_indexes
         
-        num_workers = self.params.get('num_dataloader_workers', 4)
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         return self.benchmark.load(task_id, self.params['batch_size_train'],
                                    num_workers=num_workers, pin_memory=True)[0]
 

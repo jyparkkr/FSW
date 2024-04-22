@@ -7,7 +7,7 @@ from cl_gym.benchmarks.base import Benchmark, DynamicTransformDataset, SplitData
 from cl_gym.benchmarks.mnist import ContinualMNIST, SplitMNIST
 from cl_gym.benchmarks.cifar import SplitCIFAR
 
-from .base import SplitDataset2
+from .base import SplitDataset1, SplitDataset2
 import numpy as np
 import torch
 from PIL import Image

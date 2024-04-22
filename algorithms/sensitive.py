@@ -47,12 +47,15 @@ class Heuristic3(Heuristic):
         # sensitive_loss = {x:list() for x in range(2)}
         # sensitive_grad_dict = {x:list() for x in range(2)}
         new_grads, grads = None, None
-        
+
+        loaded_batch = list()
         for batch_idx, items in enumerate(loader):
             inp, targ, t_id, indices, sample_weight, sensitive_label, *_ = items
+            if current_set:
+                loaded_batch.append(items)
             # self.backbone.forward
             inp, targ, t_id, sensitive_label  = inp.to(device), targ.to(device), t_id.to(device), sensitive_label.to(device)
-            pred, embeds = self.backbone.forward_embeds(inp)
+            pred, embeds = self.backbone.forward_embeds(inp, t_id)
             self.pred_shape = pred.shape[1]
             self.embeds_shape = embeds.shape[1]
             criterion.reduction = "none"
@@ -85,15 +88,15 @@ class Heuristic3(Heuristic):
 
         classwise_loss_all = [classwise_loss_s0, classwise_loss_s1]
         classwise_grad_all = [classwise_grad_s0, classwise_grad_s1]
-        return classwise_loss_all, classwise_grad_all, new_grads
+        return classwise_loss_all, classwise_grad_all, new_grads, loaded_batch
     
     def get_loss_grad_all(self, task_id):
-        num_workers = self.params.get('num_dataloader_workers', 4)
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
-        classwise_loss_all, classwise_grad_all, _ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
-        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
+        classwise_loss_all, classwise_grad_all, *_ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
+        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=True,
                                    num_workers=num_workers, pin_memory=True)[0]
-        current_loss_all, current_grad_all, new_grads = self.get_loss_grad(task_id, train_loader, current_set = True)
+        current_loss_all, current_grad_all, new_grads, new_batch = self.get_loss_grad(task_id, train_loader, current_set = True)
         r_new_grads = new_grads[self.non_select_indexes]
 
         classwise_loss_all[0].update(current_loss_all[0])
@@ -123,7 +126,7 @@ class Heuristic3(Heuristic):
             n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
             n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
-        return losses, n_grads_all, n_r_new_grads
+        return losses, n_grads_all, n_r_new_grads, new_batch
 
     def converter_LP_absolute_additional(self, losses, alpha, grads_all, new_grads, task=None):
         """

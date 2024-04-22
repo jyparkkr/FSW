@@ -6,7 +6,7 @@ from cl_gym.benchmarks.transforms import get_default_fashion_mnist_transform
 import numpy as np
 import torch
 
-from .base import SplitDataset2
+from .base import SplitDataset1, SplitDataset2
 from .mnist import MNIST
 
 

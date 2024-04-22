@@ -5,6 +5,7 @@ from .base import ContinualTrainer1
 import numpy as np
 
 class FairContinualTrainer1(ContinualTrainer1):
+    # Basic frame of FairContinualTrainer
     def train_algorithm_on_task(self, task: int):
         train_loader = self.algorithm.prepare_train_loader(task)
         optimizer = self.algorithm.prepare_optimizer(task)
@@ -16,14 +17,14 @@ class FairContinualTrainer1(ContinualTrainer1):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, indices, sample_weight, sensitive_label, *_ = items
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, _, sample_weight, sensitive_label, *_ = item_to_devices
                 # if batch_idx == 0:
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
-                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device), \
-                                             sensitive_label=sensitive_label.to(device)) #ADDED
+                self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, \
+                                             sample_weight=sample_weight, sensitive_label=sensitive_label) #ADDED
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()
@@ -47,8 +48,8 @@ class FairContinualTrainer1(ContinualTrainer1):
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
             for items in eval_loader:
-                inp, targ, task_ids, indices, sample_weight, sensitive_label, *_ = items
-                inp, targ, task_ids, sensitive_label = inp.to(device), targ.to(device), task_ids.to(device), sensitive_label.to(device)
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, _, _, sensitive_label, *_ = item_to_devices
                 pred = self.algorithm.backbone(inp, task_ids)
                 total += len(targ)
                 test_loss += criterion(pred, targ).item()
@@ -96,14 +97,14 @@ class FairContinualTrainer2(FairContinualTrainer1):
             self.algorithm.backbone.train()
             self.algorithm.backbone = self.algorithm.backbone.to(device)
             for batch_idx, items in enumerate(train_loader):
-                inp, targ, task_ids, indices, sample_weight, sensitive_label, *_ = items
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, indices, sample_weight, sensitive_label, *_ = item_to_devices
                 # if batch_idx == 0:
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
-                self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
-                                             optimizer, criterion, sample_weight=sample_weight.to(device), \
-                                             sensitive_label=sensitive_label.to(device)) #ADDED
+                self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, \
+                                             sample_weight=sample_weight, sensitive_label=sensitive_label) #ADDED
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()

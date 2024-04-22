@@ -5,7 +5,7 @@ from cl_gym.benchmarks.transforms import get_default_mnist_transform
 from cl_gym.benchmarks.mnist import SplitMNIST
 import numpy as np
 
-from .base import SplitDataset2, SplitDataset3
+from .base import SplitDataset1, SplitDataset2
 
 class MNIST(SplitMNIST):
     def __init__(self,
