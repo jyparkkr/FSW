@@ -104,6 +104,9 @@ class BaseMemoryContinualTrainer(BaseContinualTrainer):
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
+                if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr'] / 10
                 self.algorithm.training_step(task_ids.to(device), inp.to(device), targ.to(device), \
                                              indices, optimizer, criterion)
                 self.algorithm.training_step_end()
