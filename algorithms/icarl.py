@@ -1,10 +1,12 @@
-# Copyright 2019-present, MILA, KU LEUVEN.
-# All rights reserved.
-# code imported and modified from https://github.com/RaptorMai/online-continual-learning/blob/main/utils/buffer/gss_greedy_update.py
-
+# code imported and modified from https://github.com/XxidroxX/Incremental-Learning-iCarl
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
+from cl_gym.algorithms.utils import flatten_grads, assign_grads
+from PIL import Image
+
+import copy
 
 from .baselines import BaseMemoryContinualAlgoritm
 
@@ -12,12 +14,10 @@ class iCaRL(BaseMemoryContinualAlgoritm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2
-        self.params = args[2]
-        self.mem_strength = self.params['batch_size_train']*2 # hyperparameter
-        self.gss_batch_size = self.params['batch_size_train'] # Random sampling batch size to estimate score
         self.device = self.params['device']
-        self.mem_size = self.params['per_task_memory_examples']
-        self.buffer_score = torch.FloatTensor(self.mem_size).fill_(0).to(self.device)
+        self.mem_size = self.params['per_task_memory_examples'] * self.params['num_tasks']
+        self.old_backbone = None
+        self.exemplar_dict = {cls:list() for cls in self.benchmark.class_idx}
         self._modify_benchmark()
 
     def _modify_benchmark(self):
@@ -27,142 +27,207 @@ class iCaRL(BaseMemoryContinualAlgoritm):
             self.benchmark.memory_indices_train[task] = list()
             self.memory_current_index[task] = 0
 
-    def training_step(self, task_ids, inp, targ, indices, optimizer, criterion):
-        super().training_step(task_ids, inp, targ, optimizer, criterion)
-        self.update(inp, targ, task_ids[0].item(), indices)
-
-    def update_memory_idx(self, task, insert_idx, remove_idx):
-        """
-        update self.benchmark.memory_indices_train[task]
-        insert_idx: index to insert in self.benchmark.trains[task]
-        remove_idx: target index to remove (index from memory)
-        """
-        for i, e in enumerate(remove_idx):
-            # t = self.benchmark.memory_indices_train[task].index(e.item())
-            self.benchmark.memory_indices_train[task][e] = insert_idx[i].item()
-
-    def insert_memory_idx(self, task, insert_idx):
-        """
-        insert self.benchmark.memory_indices_train[task] (list)
-        insert_idx: index to insert in self.benchmark.memory_indices_train[task]
-        """
-        self.benchmark.memory_indices_train[task].extend(insert_idx.cpu().numpy().tolist())
-
-    def get_ith_memory(self, task, indices):
-        # memory_dataset = Subset(self.benchmark.trains[task], self.benchmark.memory_indices_train[task])
-        # partial_memory = Subset(memory_dataset, indices)
-        partial_memory = Subset(self.benchmark.trains[task], indices)
-        loader = DataLoader(partial_memory, len(indices), shuffle=False)
-        memory_iter = iter(loader)
-        batch = next(memory_iter)
-        # inp, targ, task_id, idx, *_ = batch
-        inp, targ, *_ = batch
-        return inp.to(self.device), targ.to(self.device)
-
-    def update(self, x, y, task_id, indices):
-        self.backbone.eval()
-        grad_dims = []
-        for param in self.backbone.parameters():
-            grad_dims.append(param.data.numel())
-
-        place_left = self.mem_size - self.memory_current_index[task_id]
-        if place_left <= 0:  # buffer is full
-            batch_sim, mem_grads = self.get_batch_sim(grad_dims, x, y, task_id)
-            if batch_sim < 0:
-                buffer_score = self.buffer_score[:self.memory_current_index[task_id]]
-                buffer_sim = (buffer_score - torch.min(buffer_score)) / \
-                             ((torch.max(buffer_score) - torch.min(buffer_score)) + 0.01)
-                # draw candidates for replacement from the buffer
-                index = torch.multinomial(buffer_sim, x.size(0), replacement=False)
-                # estimate the similarity of each sample in the recieved batch
-                # to the randomly drawn samples from the buffer.
-                batch_item_sim = self.get_each_batch_sample_sim(grad_dims, mem_grads, x, y)
-                # normalize to [0,1]
-                scaled_batch_item_sim = ((batch_item_sim + 1) / 2).unsqueeze(1)
-                buffer_repl_batch_sim = ((self.buffer_score[index] + 1) / 2).unsqueeze(1)
-                # draw an event to decide on replacement decision
-                outcome = torch.multinomial(torch.cat((scaled_batch_item_sim, buffer_repl_batch_sim), dim=1), 1,
-                                            replacement=False)
-                # replace samples with outcome =1
-                added_indx = torch.arange(end=batch_item_sim.size(0)).to(self.device)
-                sub_index = outcome.squeeze(1).bool()
-
-                self.update_memory_idx(task_id, indices[added_indx[sub_index].cpu()], index[sub_index])
-                self.buffer_score[index[sub_index]] = batch_item_sim[added_indx[sub_index]].clone()
+    def _compute_loss(self, inp, target, criterion):
+        pred = self.backbone(inp)
+        num_classes = len(self.benchmark.class_idx)
+        target = F.one_hot(target, num_classes).float()
+        if self.old_backbone is None:
+            return criterion(pred, target)
         else:
-            offset = min(place_left, x.size(0))
-            x = x[:offset]
-            y = y[:offset]
-            indices = indices[:offset]
-            # first buffer insertion
-            if self.memory_current_index[task_id] == 0:
-                batch_sample_memory_cos = torch.zeros(x.size(0)).to(self.device) + 0.1
-            else:
-                # draw random samples from buffer
-                mem_grads = self.get_rand_mem_grads(grad_dims, task_id)
-                # estimate a score for each added sample
-                batch_sample_memory_cos = self.get_each_batch_sample_sim(grad_dims, mem_grads, x, y)
-            self.insert_memory_idx(task_id, indices)
-            self.buffer_score[self.memory_current_index[task_id]:self.memory_current_index[task_id] + offset] \
-                .data.copy_(batch_sample_memory_cos)
-            self.memory_current_index[task_id] += offset
-        self.backbone.train()
+            with torch.no_grad():
+                old_target = torch.sigmoid(self.old_backbone(inp))
+            n_c = self.benchmark.class_idx[:num_classes//self.params['num_tasks']*(self.current_task-1)]
+            target[:, n_c] = old_target[:, n_c]
+            return criterion(pred, target)
 
-    def get_batch_sim(self, grad_dims, batch_x, batch_y, task_id):
-        """
-        Args:
-            buffer: memory buffer
-            grad_dims: gradient dimensions
-            batch_x: batch images
-            batch_y: batch labels
-        Returns: score of current batch, gradient from memory subsets
-        """
-        mem_grads = self.get_rand_mem_grads(grad_dims, task_id)
-        self.backbone.zero_grad()
-        pred = self.backbone(batch_x)
-        loss = F.cross_entropy(pred, batch_y)
+    def training_step(self, task_ids, inp, targ, indices, optimizer, criterion, sample_weight=None, sensitive=None):
+        optimizer.zero_grad()
+        loss = self._compute_loss(inp, targ, criterion)
         loss.backward()
-        batch_grad = get_grad_vector(self.backbone.parameters, grad_dims, self.device).unsqueeze(0)
-        batch_sim = max(cosine_similarity(mem_grads, batch_grad))
-        return batch_sim, mem_grads
+        if (task_ids[0] > 1) and self.params['tau']:
+            grad_batch = flatten_grads(self.backbone).detach().clone()
+            optimizer.zero_grad()
 
-    def get_rand_mem_grads(self, grad_dims, task_id):
-        """
-        Args:
-            buffer: memory buffer
-            grad_dims: gradient dimensions
-        Returns: gradient from memory subsets
-        """
-        gss_batch_size = min(self.gss_batch_size, self.memory_current_index[task_id])
-        num_mem_subs = min(self.mem_strength, self.memory_current_index[task_id] // gss_batch_size)
-        mem_grads = torch.zeros(num_mem_subs, sum(grad_dims), dtype=torch.float32).to(self.device)
-        shuffeled_inds = torch.randperm(self.memory_current_index[task_id]).to(self.device)
-        for i in range(num_mem_subs):
-            random_batch_inds = shuffeled_inds[
-                                i * gss_batch_size:i * gss_batch_size + gss_batch_size]
-            batch_x, batch_y = self.get_ith_memory(task_id, random_batch_inds)
-            self.backbone.zero_grad()
-            loss = F.cross_entropy(self.backbone.forward(batch_x), batch_y)
+            # get grad_ref
+            inp_ref, targ_ref, task_ids_ref = self.sample_batch_from_memory()
+            loss = self._compute_loss(inp_ref, targ_ref, criterion)
+            # pred_ref = self.backbone(inp_ref, task_ids_ref)
+            # loss = criterion(pred_ref, targ_ref.reshape(len(targ_ref)))
             loss.backward()
-            mem_grads[i].data.copy_(get_grad_vector(self.backbone.parameters, grad_dims, self.device))
-        return mem_grads
+            grad_ref = flatten_grads(self.backbone).detach().clone()
+            grad_batch += self.params['tau']*grad_ref
 
-    def get_each_batch_sample_sim(self, grad_dims, mem_grads, batch_x, batch_y):
+            optimizer.zero_grad()
+            self.backbone = assign_grads(self.backbone, grad_batch)
+        optimizer.step()
+
+    def get_task_classes(self, task):
+        if task < 1:
+            raise AssertionError
+        return self.benchmark.class_idx[\
+            (task-1)*self.benchmark.num_classes_per_split:task*self.benchmark.num_classes_per_split]
+
+    def get_current_classes(self):
+        return self.get_task_classes(self.current_task)
+
+    def update_memory_after_train(self):
+        # update indices from self.exemplar_dict to benchmark.memory_indices_train[task]
+        print(f"update_memory_after_train")
+        for task in range(1, self.current_task+1):
+            indices_task = list()
+            target_classes = self.get_task_classes(task)
+            for cls in target_classes:
+                indices_task+=self.exemplar_dict[cls]
+            
+            # print(f"{task=}, len(memory) for task: {len(indices_task)=}")
+            self.benchmark.memory_indices_train[task] = indices_task
+
+    def training_epoch_end(self):
+        self._compute_exemplar_class_mean()
+        return super().training_epoch_end()
+
+    def training_task_end(self):
+        # iCaRL task
+        print(f"training_task_end")
+        self.backbone.eval()
+        current_memory_per_class = self.mem_size // (self.current_task*self.benchmark.num_classes_per_split)
+        # print(f"{current_memory_per_class=}")
+        self._reduce_exemplar_dict(current_memory_per_class)
+        # print(f"{self.get_current_classes()=}")
+        current_dataloader = self.benchmark.trains[self.current_task]
+        for cls in self.get_current_classes():
+            print(f'construct class {cls} examplar:')
+            target = (current_dataloader.targets == cls)
+            target_indices = np.where(target == 1)[0]
+            img, _ = current_dataloader.getitem_test_transform_list(target_indices)
+            if np.sum(_ != cls) > 0:
+                print(f"{cls=}")
+                print(f"{current_dataloader.targets[self.exemplar_dict[cls]]=}")
+                raise AssertionError
+
+            self._construct_exemplar_set(img, cls, target_indices, current_memory_per_class)
+        
+        self.old_backbone = copy.deepcopy(self.backbone)
+        self.old_backbone.eval()
+        # update to cl_gym framework
+        super().training_task_end()
+
+    def _compute_exemplar_class_mean(self):
         """
-        Args:
-            buffer: memory buffer
-            grad_dims: gradient dimensions
-            mem_grads: gradient from memory subsets
-            batch_x: batch images
-            batch_y: batch labels
-        Returns: score of each sample from current batch
+        Compute the mean of all the exemplars.
+        :return: None
         """
-        cosine_sim = torch.zeros(batch_x.size(0)).to(self.device)
-        for i, (x, y) in enumerate(zip(batch_x, batch_y)):
-            self.backbone.zero_grad()
-            ptloss = F.cross_entropy(self.backbone.forward(x.unsqueeze(0)), y.unsqueeze(0))
-            ptloss.backward()
-            # add the new grad to the memory grads and add it is cosine similarity
-            this_grad = get_grad_vector(self.backbone.parameters, grad_dims, self.device).unsqueeze(0)
-            cosine_sim[i] = max(cosine_similarity(mem_grads, this_grad))
-        return cosine_sim
+        self.class_mean_dict = {k:None for k in self.exemplar_dict}
+        self.backbone.eval()
+        # update prev. samples
+        for task in range(1, self.current_task):
+            task_dataloader = self.benchmark.trains[task]
+            for cls in self.get_task_classes(task):
+                if np.sum(task_dataloader.targets[self.exemplar_dict[cls]] != cls) > 0:
+                    print(f"{cls=}")
+                    print(f"{task_dataloader.targets[self.exemplar_dict[cls]]=}")
+                    raise AssertionError
+                
+                target_indices = self.exemplar_dict[cls]
+                img, _ = task_dataloader.getitem_test_transform_list(target_indices)
+                if np.sum(_ != cls) > 0:
+                    print(f"{cls=}")
+                    print(f"{task_dataloader.targets[self.exemplar_dict[cls]]=}")
+                    raise AssertionError
+
+                class_mean, _ = self.compute_class_mean(img)
+                class_mean = class_mean.data / class_mean.norm() # why?
+                self.class_mean_dict[cls] = class_mean
+        for cls in self.get_current_classes():
+            current_dataloader = self.benchmark.trains[self.current_task]
+            target = (current_dataloader.targets == cls)
+            target_indices = np.where(target == 1)[0]
+            img, _ = current_dataloader.getitem_test_transform_list(target_indices)
+            if np.sum(_ != cls) > 0:
+                print(f"{cls=}")
+                print(f"{current_dataloader.targets[self.exemplar_dict[cls]]=}")
+                raise AssertionError
+
+            class_mean, _ = self.compute_class_mean(img)
+            class_mean = class_mean.data / class_mean.norm()
+            self.class_mean_dict[cls] = class_mean
+
+    def compute_class_mean(self, images):
+        """
+        Passo tutte le immagini di una determinata classe e faccio la media.
+        :param special_transform:
+        :param images: tutte le immagini della classe x
+        :return: media della classe e features extractor.
+        """
+        self.backbone.eval()
+        images = torch.stack(images).to(self.device)  # 500x3x32x32  #stack vs cat.
+        with torch.no_grad():
+            phi_X = torch.nn.functional.normalize(self.backbone.forward_embeds(images)[1])
+
+        # phi_X.shape = 500x64
+        mean = phi_X.mean(dim=0)
+        mean.data = mean.data / mean.data.norm()
+        return mean, phi_X
+
+    def prototype_classifier(self, images):
+        # batch_sizex3x32x32
+
+        result = []
+        self.backbone.eval()
+        with torch.no_grad():
+            phi_X = F.normalize(self.backbone.forward_embeds(images)[1])
+
+        # 10x64 (di ogni classe mi salvo la media di ogni features)
+        for x in phi_X:
+            dist_class = dict()
+            for cls in self.class_mean_dict:
+                if self.class_mean_dict[cls] is not None:
+                    dist_class[cls] = (self.class_mean_dict[cls] - x).norm()
+            y = min(dist_class, key=dist_class.get)
+            result.append(y)
+        return torch.tensor(result).to(self.device)
+
+    def _reduce_exemplar_dict(self, images_per_class):
+        for cls in self.exemplar_dict:
+            self.exemplar_dict[cls] = self.exemplar_dict[cls][:images_per_class]
+            print(f"Reduce size of class {cls} to {len(self.exemplar_dict[cls])} examplar")
+
+    def _construct_exemplar_set(self, images, cls, ind, mem_per_class):
+        """
+        Costruisco il set degli exemplar basato sugli indici.
+        :param images: tutte le immagini di quella classe
+        :param m: numero di immagini da salvare
+        :return:
+        """
+        self.backbone.eval()
+        images = torch.stack(images).to(self.device)
+        with torch.no_grad():
+            phi_X = torch.nn.functional.normalize(self.backbone.forward_embeds(images)[1]).cpu()
+
+        mu_y = phi_X.mean(dim=0)  # vettore di 64 colonne
+        mu_y.data = mu_y.data / mu_y.data.norm()
+
+        Py = []
+        # Accumulates sum of exemplars
+        # sum_taken_exemplars = torch.zeros(1, 64)
+        sum_taken_exemplars = torch.zeros(1, *phi_X.shape[1:])
+
+        indexes = list()
+        for k in range(1, int(mem_per_class + 1)):
+            asd = F.normalize((1 / k) * (phi_X + sum_taken_exemplars))
+            mean_distances = (mu_y - asd).norm(dim=1)
+            used = -1
+            sorted, _ = torch.sort(mean_distances)
+            for item in sorted:
+                mins = (mean_distances == item).nonzero()
+                for j in mins: # in case of multiple same distance items
+                    if j not in indexes:
+                        indexes.append(j)
+                        Py.append(ind[j])
+                        used = j
+                        sum_taken_exemplars += phi_X[j]
+                        break
+                if used != -1:
+                    break
+        self.exemplar_dict[cls] = Py
+        print(f"{len(self.exemplar_dict[cls])=}")

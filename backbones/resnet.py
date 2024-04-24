@@ -44,7 +44,7 @@ class ResNet2(ResNet):
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         
-        if self.multi_head:
+        if self.multi_head and head_ids is not None:
             out = self.select_output_head(out, head_ids, self.num_classes_per_head, self.class_idx)
         return out
 
@@ -61,13 +61,13 @@ class ResNet2(ResNet):
         embeds = out.view(out.size(0), -1)
         out = self.linear(embeds)
 
-        if self.multi_head:
+        if self.multi_head and head_ids is not None:
             out = self.select_output_head(out, head_ids, self.num_classes_per_head, self.class_idx)
         return out, embeds
     
     def forward_classifier(self, embeds: torch.Tensor, head_ids: Optional[Iterable] = None):
         out = self.linear(embeds)
-        if self.multi_head:
+        if self.multi_head and head_ids is not None:
             out = self.select_output_head(out, head_ids, self.num_classes_per_head, self.class_idx)
         return out
     

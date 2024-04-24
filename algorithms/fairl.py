@@ -56,7 +56,6 @@ class Net(nn.Module):
             x = layer(x)
         return x
 
-
 class MCR(nn.Module):
     def __init__(self,
                  gam1=1.,

@@ -103,6 +103,9 @@ class FairContinualTrainer2(FairContinualTrainer1):
                 #     print(f"{sample_weight.to(device)=}")
                 self.on_before_training_step()
                 self.tick('step')
+                if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr'] / 10
                 self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, \
                                              sample_weight=sample_weight, sensitive_label=sensitive_label) #ADDED
                 self.algorithm.training_step_end()

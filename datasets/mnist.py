@@ -28,9 +28,9 @@ class MNIST(SplitMNIST):
                          per_task_subset_examples, task_input_transforms, task_target_transforms)
 
     def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        self.mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        self.mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        self.mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
 
     def load_datasets(self):
         self.__load_mnist()

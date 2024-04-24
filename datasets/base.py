@@ -45,6 +45,32 @@ class SplitDataset1(SplitDataset):
         sample_weight = self.sample_weight[index]
         return img, target, self.task_id, index, sample_weight
 
+    def getitem_test_transform(self, index: int):
+        idx = self.true_index[index]
+        img = self.dataset.data[idx]
+        if isinstance(img, torch.Tensor):
+            img = img.numpy()
+        target = int(self.dataset.targets[idx])
+        mode = "RGB" # TODO: need to modify mode for each dataset
+        if self.dataset.data.shape[-1] == 3:
+            mode = "RGB"
+        else:
+            mode = "L"
+        img = Image.fromarray(img, mode=mode) 
+        if hasattr(self.dataset, "test_transform"):
+            img = self.dataset.test_transform(img)
+        else:
+            img = self.dataset.transform(img)
+        return img, target
+
+    def getitem_test_transform_list(self, indices: list):
+        img_list, target_list = [], []
+        for idx in indices:
+            img, target = self.getitem_test_transform(idx)
+            img_list.append(img)
+            target_list.append(target)
+        return img_list, target_list
+
     def __len__(self):
         return len(self.true_index)
 

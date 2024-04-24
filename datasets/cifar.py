@@ -67,10 +67,10 @@ class CIFAR10(SplitCIFAR):
 
     def __load_cifar(self):
         transforms = self.task_input_transforms[0]
-        test_transform = get_test_cifar_transform(1, self.is_cifar_100)[0]
+        self.test_transform = get_test_cifar_transform(1, self.is_cifar_100)[0]
         CIFAR_dataset = torchvision.datasets.CIFAR100 if self.is_cifar_100 else torchvision.datasets.CIFAR10
         self.cifar_train = CIFAR_dataset(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.cifar_test = CIFAR_dataset(DEFAULT_DATASET_DIR, train=False, download=True, transform=test_transform)
+        self.cifar_test = CIFAR_dataset(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.test_transform)
 
     def load_datasets(self):
         self.__load_cifar()

@@ -56,9 +56,9 @@ class BiasedMNIST(MNIST):
                          per_task_subset_examples, task_input_transforms, task_target_transforms, random_class_idx=random_class_idx)
 
     def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
 
         self._modify_dataset(mnist_train, 0.95)
         self._modify_dataset(mnist_test, 0.5) # s0:s1 = 5:5

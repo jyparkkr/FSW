@@ -24,9 +24,9 @@ class FashionMNIST(MNIST):
         super().__init__(num_tasks, task_input_transforms=task_input_transforms, **kwargs)
 
     def __load_fashion_mnist(self):
-        transforms = self.task_input_transforms[0]
-        self.fashion_mnist_train = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.fashion_mnist_test = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        self.fashion_mnist_train = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        self.fashion_mnist_test = torchvision.datasets.FashionMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
         
     def load_datasets(self):
         self.__load_fashion_mnist()

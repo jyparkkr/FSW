@@ -3,6 +3,7 @@ from cl_gym.algorithms import ContinualAlgorithm
 from cl_gym.utils.callbacks import ContinualCallback
 from cl_gym.utils.loggers import Logger
 import torch
+import torch.nn.functional as F
 import numpy as np
 from typing import Dict, Iterable, Optional
 import cl_gym as cl
@@ -67,14 +68,20 @@ class BaseContinualTrainer(cl.trainer.ContinualTrainer):
         criterion = self.algorithm.prepare_criterion(task)
         with torch.no_grad():
             for items in eval_loader:
-                inp, targ, task_ids, *_ = items
-                inp, targ, task_ids = inp.to(device), targ.to(device), task_ids.to(device)
-                # inp, targ, task_ids, sample_weight = inp.to(device), targ.to(device), task_ids.to(device), sample_weight.to(device)
-                pred = self.algorithm.backbone(inp, task_ids)
-                total += len(targ)
-                test_loss += criterion(pred, targ).item()
-                pred = pred.data.max(1, keepdim=True)[1]
-                same = pred.eq(targ.data.view_as(pred))
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, *_ = item_to_devices
+                if criterion._get_name() != "BCEWithLogitsLoss":
+                    pred = self.algorithm.backbone(inp, task_ids)
+                    total += len(targ)
+                    test_loss += criterion(pred, targ).item()
+                    pred = pred.data.max(1, keepdim=True)[1]
+                    same = pred.eq(targ.data.view_as(pred))
+
+                elif criterion._get_name() == "BCEWithLogitsLoss":
+                    pred = self.algorithm.prototype_classifier(inp)
+                    total += len(targ)
+                    same = pred.eq(targ.data.view_as(pred))
+
                 for t, s in zip(targ, same):
                     t = t.cpu().item()
                     s = s.cpu().item()

@@ -21,7 +21,7 @@ def main():
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(6)
+    torch.set_num_threads(8)
     torch.backends.cudnn.enabled = False
     torch.backends.cudnn.benchmark = False
 
@@ -81,14 +81,14 @@ def main():
             class_idx=class_idx,
             config=params
             ).to(params['device'])
-    elif params['model'] == "resnet18small": 
-        from backbones import ResNet18Small2
-        backbone = ResNet18Small2(
-            input_dim=input_dim, 
-            output_dim=num_classes,
-            class_idx=class_idx,
-            config=params
-            ).to(params['device'])
+    # elif params['model'] == "resnet18small": 
+    #     from backbones import ResNet18Small2
+    #     backbone = ResNet18Small2(
+    #         input_dim=input_dim, 
+    #         output_dim=num_classes,
+    #         class_idx=class_idx,
+    #         config=params
+    #         ).to(params['device'])
     elif params['model'] == "resnet18": 
         from backbones import ResNet18
         backbone = ResNet18(
@@ -122,6 +122,7 @@ def main():
             from trainers.baselines import BaseMemoryContinualTrainer as ContinualTrainer
             # for GSS, batch size should be smaller than per_task_memory size
         else:
+            print(f"{params['method']=}")
             raise NotImplementedError
     elif params['metric'] in ["EO", "DP"]:
         from metrics import FairMetricCollector as MetricCollector
