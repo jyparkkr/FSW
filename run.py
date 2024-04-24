@@ -101,6 +101,7 @@ def main():
         raise NotImplementedError
 
     # load algorithm, metric, trainer
+    # TODO: algorithm이 trainer에 regardless하게 작동하도록 수정해야 함
     fairness_metrics = ["std", "EER", "EO", "DP"]
     if params['metric'] in ["std", "EER"]:
         from metrics import MetricCollector2 as MetricCollector
@@ -111,7 +112,7 @@ def main():
             MetricCollector.fairness_metric = "EER"
         else:
             raise AssertionError
-        if params['method'] in ["FSW", 'joint', 'finetune']:
+        if params['method'] in ["FSW", 'joint', 'finetune', 'iCaRL']:
             from algorithms.imbalance import Heuristic2 as Algorithm
         elif params['method'] in ["FSS"]:
             from algorithms.imbalance_greedy import Heuristic1 as Algorithm
@@ -120,19 +121,25 @@ def main():
         elif params['method'] in ["GSS"]:
             from algorithms.gss import GSSGreedy as Algorithm
             from trainers.baselines import BaseMemoryContinualTrainer as ContinualTrainer
+        elif params['method'] in ["iCaRL"]:
+            from algorithms.icarl import iCaRL as Algorithm
+            # from trainers.baselines import BaseContinualTrainer as ContinualTrainer
             # for GSS, batch size should be smaller than per_task_memory size
         else:
             print(f"{params['method']=}")
             raise NotImplementedError
     elif params['metric'] in ["EO", "DP"]:
         from metrics import FairMetricCollector as MetricCollector
-        from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
         if params['metric'] == "EO":
             MetricCollector.fairness_metric = "EO"
         elif params['metric'] == "DP":
             MetricCollector.fairness_metric = "DP"
         else:
             raise AssertionError
+        if params['dataset'] in ["BiasedMNIST"]:
+            from trainers.fair_trainer import FairContinualTrainer3 as ContinualTrainer
+        else:
+            from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
 
         if params['method'] == "FSW":
             from algorithms.sensitive import Heuristic3 as Algorithm

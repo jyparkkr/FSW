@@ -8,9 +8,9 @@ from PIL import Image
 
 import copy
 
-from .baselines import BaseMemoryContinualAlgoritm
+from .baselines import BaseContinualAlgoritm
 
-class iCaRL(BaseMemoryContinualAlgoritm):
+class iCaRL(BaseContinualAlgoritm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2
@@ -19,6 +19,9 @@ class iCaRL(BaseMemoryContinualAlgoritm):
         self.old_backbone = None
         self.exemplar_dict = {cls:list() for cls in self.benchmark.class_idx}
         self._modify_benchmark()
+
+    def prepare_train_loader(self, task_id, epoch=0):
+        return super().prepare_train_loader(task_id)
 
     def _modify_benchmark(self):
         num_tasks = self.benchmark.num_tasks
@@ -40,7 +43,7 @@ class iCaRL(BaseMemoryContinualAlgoritm):
             target[:, n_c] = old_target[:, n_c]
             return criterion(pred, target)
 
-    def training_step(self, task_ids, inp, targ, indices, optimizer, criterion, sample_weight=None, sensitive=None):
+    def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):
         optimizer.zero_grad()
         loss = self._compute_loss(inp, targ, criterion)
         loss.backward()
@@ -110,6 +113,7 @@ class iCaRL(BaseMemoryContinualAlgoritm):
         self.old_backbone = copy.deepcopy(self.backbone)
         self.old_backbone.eval()
         # update to cl_gym framework
+        self.update_memory_after_train()
         super().training_task_end()
 
     def _compute_exemplar_class_mean(self):

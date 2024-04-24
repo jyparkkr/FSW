@@ -68,11 +68,17 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
             for items in eval_loader:
                 item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
                 inp, targ, task_ids, *_ = item_to_devices
-                pred = self.algorithm.backbone(inp, task_ids)
-                total += len(targ)
-                test_loss += criterion(pred, targ).item()
-                pred = pred.data.max(1, keepdim=True)[1]
-                same = pred.eq(targ.data.view_as(pred))
+                if criterion._get_name() != "BCEWithLogitsLoss":
+                    pred = self.algorithm.backbone(inp, task_ids)
+                    total += len(targ)
+                    test_loss += criterion(pred, targ).item()
+                    pred = pred.data.max(1, keepdim=True)[1]
+                    same = pred.eq(targ.data.view_as(pred))
+                elif criterion._get_name() == "BCEWithLogitsLoss":
+                    pred = self.algorithm.prototype_classifier(inp)
+                    total += len(targ)
+                    same = pred.eq(targ.data.view_as(pred))
+
                 for t, s in zip(targ, same):
                     t = t.cpu().item()
                     s = s.cpu().item()
