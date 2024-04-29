@@ -31,10 +31,15 @@ class SplitDataset1(SplitDataset):
         self.sample_weight = sample_weight
 
     def build_split(self, task_id):
-        start_class = (task_id-1) * self.num_classes_per_split
-        end_class = min(task_id * self.num_classes_per_split, len(self.class_idx))
+        target_classes = list()
+        if isinstance(task_id, int):
+            task_id = [task_id]
+        for task in task_id:
+            start_class = (task-1) * self.num_classes_per_split
+            end_class = min(task * self.num_classes_per_split, len(self.class_idx))
+            target_classes.extend(self.class_idx[start_class:end_class])
         indices = np.zeros_like(self.original_target)
-        for c in self.class_idx[start_class:end_class]:
+        for c in target_classes:
             indices = np.logical_or(indices, self.original_target == c)
         self.true_index = np.where(indices)[0] 
         self.targets = self.original_target[self.true_index]
@@ -42,8 +47,39 @@ class SplitDataset1(SplitDataset):
     def __getitem__(self, index: int):
         idx = self.true_index[index]
         img, target, *_ = self.dataset[idx]
+        target_ = target if not isinstance(target, torch.Tensor) else target.item()
+        if isinstance(self.task_id, int):
+            task_id = self.task_id
+        else:
+            task_id = np.where(self.class_idx == target_)[0][0] // self.num_classes_per_split + 1
         sample_weight = self.sample_weight[index]
-        return img, target, self.task_id, index, sample_weight
+        return img, target, task_id, index, sample_weight
+
+    def getitem_test_transform(self, index: int):
+        idx = self.true_index[index]
+        img = self.dataset.data[idx]
+        if isinstance(img, torch.Tensor):
+            img = img.numpy()
+        target = int(self.dataset.targets[idx])
+        mode = "RGB" # TODO: need to modify mode for each dataset
+        if self.dataset.data.shape[-1] == 3:
+            mode = "RGB"
+        else:
+            mode = "L"
+        img = Image.fromarray(img, mode=mode) 
+        if hasattr(self.dataset, "test_transform"):
+            img = self.dataset.test_transform(img)
+        else:
+            img = self.dataset.transform(img)
+        return img, target
+
+    def getitem_test_transform_list(self, indices: list):
+        img_list, target_list = [], []
+        for idx in indices:
+            img, target = self.getitem_test_transform(idx)
+            img_list.append(img)
+            target_list.append(target)
+        return img_list, target_list
 
     def __len__(self):
         return len(self.true_index)
@@ -87,7 +123,7 @@ class SplitDataset1(SplitDataset):
         self.targets[idx] = y.clone().cpu().numpy()
         self.sample_weight[idx] = weight.clone()
 
-class SplitDataset2(SplitDataset1):
+class SplitDataset2(SplitDataset1): # For EER datasets
     def __getitem__(self, index: int):
         img, target, task_id, idx, sample_weight = super().__getitem__(index)
         return img, target, task_id, idx, sample_weight, target # target as sensitive attribute
@@ -124,5 +160,11 @@ class SplitDataset4(SplitDataset3):
 
         if self.dataset.target_transform is not None:
             target = self.dataset.target_transform(target)
+        
+        target_ = target if not isinstance(target, torch.Tensor) else target.item()
+        if isinstance(self.task_id, int):
+            task_id = self.task_id
+        else:
+            task_id = np.where(self.class_idx == target_)[0][0] // self.num_classes_per_split + 1
 
-        return img, target, self.task_id, idx, sample_weight, sen
+        return img, target, task_id, idx, sample_weight, sen

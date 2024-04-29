@@ -137,9 +137,9 @@ class NoiseMNIST(SplitMNIST):
 
 
     def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        self.mnist_train = FairMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.mnist_test = FairMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        self.mnist_train = FairMNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        self.mnist_test = FairMNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
         
         train_len = len(self.mnist_train)
         test_len = len(self.mnist_test)

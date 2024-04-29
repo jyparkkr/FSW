@@ -46,7 +46,7 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
         loss.backward()
         optimizer.step()
 
-    def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive=None):
+    def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):
         optimizer.zero_grad()
         pred = self.backbone(inp, task_ids)
         criterion.reduction = "none"

@@ -6,11 +6,12 @@ import subprocess
 import copy
 from datasets import __all__ as dataset_list, fairness_dataset
 
-model_pool = ["MLP", "resnet18", "resnet18small"]
+# model_pool = ["MLP", "resnet18small", "resnet18"]
+model_pool = ["MLP", "resnet18"]
 optimizer_pool = ["sgd", "adam"]
 algorithm_pool = ["optimization", "greedy"]
 metric_pool = ["std", "EER", "EO", "DP", "no_metrics"]
-method_pool = ['FSW', "FSS", 'joint', 'finetune', 'AGEM', "GSS"]
+method_pool = ['FSW', "FSS", 'joint', 'finetune', 'AGEM', "GSS", "iCaRL"]
 
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
@@ -93,6 +94,8 @@ def make_params(args) -> dict:
 
     params['device'] = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
     params['criterion'] = torch.nn.CrossEntropyLoss()
+    if params['method'] == "iCaRL":
+        params['criterion'] = torch.nn.BCEWithLogitsLoss()
     trial_id = f"dataset={params['dataset']}"
 
     if params['random_class_idx']:
@@ -103,16 +106,20 @@ def make_params(args) -> dict:
         params['method'] = 'joint'
     elif params['tau'] == 0:
         params['method'] = 'finetune'
-    elif params['alpha'] == 0:
-        params['method'] = 'vanilla'
 
     if params['method'] == 'joint':
         params['num_tasks'] == 1
     elif params['method'] == 'finetune':
         params['tau'] == 0
-    elif params['method'] == 'vanilla':
-        params['alpha'] == 0
     trial_id = os.path.join(trial_id, f"{params['method']}")
+
+    epoch = params['epochs_per_task']
+    if epoch > 50 and epoch <= 100:
+        params['learning_rate_decay_epoch'] = [30, 50, 70]
+    if epoch > 100 and epoch <= 150:
+        params['learning_rate_decay_epoch'] = [30, 60, 90, 120]
+    if epoch > 150 and epoch <= 200:
+        params['learning_rate_decay_epoch'] = [40, 80, 120, 160]
 
     # define metrics
     trial_id = os.path.join(trial_id, f"{params['metric']}")

@@ -49,16 +49,17 @@ class BiasedMNIST(MNIST):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
+                 joint=False,
                  random_class_idx=False):
         if task_input_transforms is None:
             task_input_transforms = get_default_biased_mnist_transform(num_tasks)
-        super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
-                         per_task_subset_examples, task_input_transforms, task_target_transforms, random_class_idx=random_class_idx)
+        super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples, per_task_subset_examples,
+                         task_input_transforms, task_target_transforms, joint=joint, random_class_idx=random_class_idx)
 
     def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
 
         self._modify_dataset(mnist_train, 0.95)
         self._modify_dataset(mnist_test, 0.5) # s0:s1 = 5:5
@@ -69,7 +70,10 @@ class BiasedMNIST(MNIST):
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            train_task = task
+            if self.joint:
+                train_task = [t for t in range(1, task+1)]
+            self.trains[task] = SplitDataset4(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
             self.tests[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def _modify_dataset(self, dataset, s0_rate):

@@ -21,7 +21,7 @@ def main():
     torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(6)
+    torch.set_num_threads(8)
     torch.backends.cudnn.enabled = False
     torch.backends.cudnn.benchmark = False
 
@@ -37,32 +37,38 @@ def main():
     from datasets import MNIST, FashionMNIST, BiasedMNIST, CIFAR10, CIFAR100
     if params['dataset'] == 'MNIST':
         benchmark = MNIST(num_tasks=params['num_tasks'],
-                        per_task_memory_examples=params['per_task_memory_examples'],
-                        per_task_examples = params['per_task_examples'],
-                        random_class_idx = params['random_class_idx'])
+                          per_task_memory_examples=params['per_task_memory_examples'],
+                          per_task_examples = params['per_task_examples'],
+                          joint = (params['method'] == "joint"),
+                          random_class_idx = params['random_class_idx'])
         input_dim = (28, 28)
     elif params['dataset'] == 'FashionMNIST':
         benchmark = FashionMNIST(num_tasks=params['num_tasks'],
-                                per_task_memory_examples=params['per_task_memory_examples'],
-                                per_task_examples = params['per_task_examples'],
-                                random_class_idx = params['random_class_idx'])
+                                 per_task_memory_examples=params['per_task_memory_examples'],
+                                 per_task_examples = params['per_task_examples'],
+                                 joint = (params['method'] == "joint"),
+                                 random_class_idx = params['random_class_idx'])
         input_dim = (28, 28)
     elif params['dataset'] == 'CIFAR10':
         benchmark = CIFAR10(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
+                            # joint = (params['method'] == "joint"),
+                            joint = True,
                             random_class_idx = params['random_class_idx'])
         input_dim = (3, 32, 32)
     elif params['dataset'] == 'CIFAR100':        
         benchmark = CIFAR100(num_tasks=params['num_tasks'],
-                            per_task_memory_examples=params['per_task_memory_examples'],
-                            per_task_examples = params['per_task_examples'],
-                            random_class_idx = params['random_class_idx'])
+                             per_task_memory_examples=params['per_task_memory_examples'],
+                             per_task_examples = params['per_task_examples'],
+                             joint = (params['method'] == "joint"),
+                             random_class_idx = params['random_class_idx'])
         input_dim = (3, 32, 32)
     elif params['dataset'] in ["BiasedMNIST"]:
         benchmark = BiasedMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
+                                joint = (params['method'] == "joint"),
                                 random_class_idx = params['random_class_idx'])
         input_dim = (3, 28, 28)
     else:
@@ -81,14 +87,14 @@ def main():
             class_idx=class_idx,
             config=params
             ).to(params['device'])
-    elif params['model'] == "resnet18small": 
-        from backbones import ResNet18Small2
-        backbone = ResNet18Small2(
-            input_dim=input_dim, 
-            output_dim=num_classes,
-            class_idx=class_idx,
-            config=params
-            ).to(params['device'])
+    # elif params['model'] == "resnet18small": 
+    #     from backbones import ResNet18Small2
+    #     backbone = ResNet18Small2(
+    #         input_dim=input_dim, 
+    #         output_dim=num_classes,
+    #         class_idx=class_idx,
+    #         config=params
+    #         ).to(params['device'])
     elif params['model'] == "resnet18": 
         from backbones import ResNet18
         backbone = ResNet18(
@@ -101,6 +107,7 @@ def main():
         raise NotImplementedError
 
     # load algorithm, metric, trainer
+    # TODO: algorithm이 trainer에 regardless하게 작동하도록 수정해야 함
     fairness_metrics = ["std", "EER", "EO", "DP"]
     if params['metric'] in ["std", "EER"]:
         from metrics import MetricCollector2 as MetricCollector
@@ -111,7 +118,7 @@ def main():
             MetricCollector.fairness_metric = "EER"
         else:
             raise AssertionError
-        if params['method'] in ["FSW", 'joint', 'finetune']:
+        if params['method'] in ["FSW", 'joint', 'finetune', 'iCaRL']:
             from algorithms.imbalance import Heuristic2 as Algorithm
         elif params['method'] in ["FSS"]:
             from algorithms.imbalance_greedy import Heuristic1 as Algorithm
@@ -120,18 +127,22 @@ def main():
         elif params['method'] in ["GSS"]:
             from algorithms.gss import GSSGreedy as Algorithm
             from trainers.baselines import BaseMemoryContinualTrainer as ContinualTrainer
+        elif params['method'] in ["iCaRL"]:
+            from algorithms.icarl import iCaRL as Algorithm
+            # from trainers.baselines import BaseContinualTrainer as ContinualTrainer
             # for GSS, batch size should be smaller than per_task_memory size
         else:
+            print(f"{params['method']=}")
             raise NotImplementedError
     elif params['metric'] in ["EO", "DP"]:
         from metrics import FairMetricCollector as MetricCollector
-        from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
         if params['metric'] == "EO":
             MetricCollector.fairness_metric = "EO"
         elif params['metric'] == "DP":
             MetricCollector.fairness_metric = "DP"
         else:
             raise AssertionError
+        from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
 
         if params['method'] == "FSW":
             from algorithms.sensitive import Heuristic3 as Algorithm

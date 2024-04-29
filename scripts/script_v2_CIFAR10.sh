@@ -12,11 +12,11 @@ METHOD="FSW"
 cnt=0
 # for SEED in {0..4}; do
 for SEED in 10; do
-for EPOCH in 1 5; do
-for TAU in 1.0 5.0 10.0; do
-for LR in 0.001; do
-for ALPHA in 0.0005 0.001 0.002 0.005 0.01 0.02; do
-for LAMBDA in 1.0 5.0 10.0; do
+for EPOCH in 50 100; do
+for TAU in 10.0 30.0 50.0; do
+for LR in 0.001 0.01 0.1; do
+for ALPHA in 0.001; do
+for LAMBDA in 0.01 0.1; do
     if [[ $DATASET == "MNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
@@ -37,7 +37,7 @@ for LAMBDA in 1.0 5.0 10.0; do
         BUFFER_PER_CLASS=64
         METRIC="EO"
     elif [[ $DATASET == "CIFAR10" ]]; then
-        MODEL="resnet18small"
+        MODEL="resnet18"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=256

@@ -16,8 +16,10 @@ class MNIST(SplitMNIST):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
+                 joint=False,
                  random_class_idx=False):
         self.num_classes_per_split = 2
+        self.joint = joint
         cls = np.arange(10)
         if random_class_idx:
             self.class_idx = np.random.choice(cls, len(cls), replace=False)
@@ -28,14 +30,17 @@ class MNIST(SplitMNIST):
                          per_task_subset_examples, task_input_transforms, task_target_transforms)
 
     def __load_mnist(self):
-        transforms = self.task_input_transforms[0]
-        self.mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=transforms)
-        self.mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=transforms)
+        self.transform = self.task_input_transforms[0]
+        self.mnist_train = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=True, download=True, transform=self.transform)
+        self.mnist_test = torchvision.datasets.MNIST(DEFAULT_DATASET_DIR, train=False, download=True, transform=self.transform)
 
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            train_task = task
+            if self.joint:
+                train_task = [t for t in range(1, task+1)]
+            self.trains[task] = SplitDataset2(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
             self.tests[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):

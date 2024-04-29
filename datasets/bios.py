@@ -35,9 +35,11 @@ class Bios(Benchmark):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
+                 joint=False,
                  random_class_idx=False):
         self.num_tasks = num_tasks
         self.num_classes_per_split = 5
+        self.joint = joint
         self.label_names = [
             "accountant", "architect", "attorney", "chiropractor", "comedian",
             "composer", "dentist", "dietitian", "dj", "filmmaker", "interior_designer",
@@ -101,7 +103,10 @@ class Bios(Benchmark):
     def load_datasets(self):
         self.__load_bios()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset3(task, self.num_classes_per_split, self.bios_train, class_idx=self.class_idx)
+            train_task = task
+            if self.joint:
+                train_task = [t for t in range(1, task+1)]
+            self.trains[task] = SplitDataset3(train_task, self.num_classes_per_split, self.bios_train, class_idx=self.class_idx)
             self.tests[task] = SplitDataset3(task, self.num_classes_per_split, self.bios_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):
