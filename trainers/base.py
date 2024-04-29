@@ -7,6 +7,8 @@ import numpy as np
 from typing import Dict, Iterable, Optional
 import cl_gym as cl
 
+get_avg = lambda cor_count: np.mean([cor/count for cor, count in cor_count.values()])
+avg_ = lambda cor_count: cor_count[0]/cor_count[1]
 
 class ContinualTrainer1(cl.trainer.ContinualTrainer):
     def __init__(self,
@@ -41,6 +43,9 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
                 inp, targ, task_ids, _, sample_weight, *_ = item_to_devices
                 self.on_before_training_step()
                 self.tick('step')
+                if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr'] / 10
                 self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, 
                                              sample_weight=sample_weight)
                 self.algorithm.training_step_end()
@@ -108,6 +113,9 @@ class ContinualTrainer2(ContinualTrainer1):
                 inp, targ, task_ids, _, sample_weight, *_ = item_to_devices
                 self.on_before_training_step()
                 self.tick('step')
+                if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr'] / 10
                 self.algorithm.training_step(task_ids, inp, targ, optimizer, criterion, \
                                              sample_weight=sample_weight)
                 self.algorithm.training_step_end()

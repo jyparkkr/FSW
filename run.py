@@ -37,32 +37,38 @@ def main():
     from datasets import MNIST, FashionMNIST, BiasedMNIST, CIFAR10, CIFAR100
     if params['dataset'] == 'MNIST':
         benchmark = MNIST(num_tasks=params['num_tasks'],
-                        per_task_memory_examples=params['per_task_memory_examples'],
-                        per_task_examples = params['per_task_examples'],
-                        random_class_idx = params['random_class_idx'])
+                          per_task_memory_examples=params['per_task_memory_examples'],
+                          per_task_examples = params['per_task_examples'],
+                          joint = (params['method'] == "joint"),
+                          random_class_idx = params['random_class_idx'])
         input_dim = (28, 28)
     elif params['dataset'] == 'FashionMNIST':
         benchmark = FashionMNIST(num_tasks=params['num_tasks'],
-                                per_task_memory_examples=params['per_task_memory_examples'],
-                                per_task_examples = params['per_task_examples'],
-                                random_class_idx = params['random_class_idx'])
+                                 per_task_memory_examples=params['per_task_memory_examples'],
+                                 per_task_examples = params['per_task_examples'],
+                                 joint = (params['method'] == "joint"),
+                                 random_class_idx = params['random_class_idx'])
         input_dim = (28, 28)
     elif params['dataset'] == 'CIFAR10':
         benchmark = CIFAR10(num_tasks=params['num_tasks'],
                             per_task_memory_examples=params['per_task_memory_examples'],
                             per_task_examples = params['per_task_examples'],
+                            # joint = (params['method'] == "joint"),
+                            joint = True,
                             random_class_idx = params['random_class_idx'])
         input_dim = (3, 32, 32)
     elif params['dataset'] == 'CIFAR100':        
         benchmark = CIFAR100(num_tasks=params['num_tasks'],
-                            per_task_memory_examples=params['per_task_memory_examples'],
-                            per_task_examples = params['per_task_examples'],
-                            random_class_idx = params['random_class_idx'])
+                             per_task_memory_examples=params['per_task_memory_examples'],
+                             per_task_examples = params['per_task_examples'],
+                             joint = (params['method'] == "joint"),
+                             random_class_idx = params['random_class_idx'])
         input_dim = (3, 32, 32)
     elif params['dataset'] in ["BiasedMNIST"]:
         benchmark = BiasedMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
                                 per_task_examples = params['per_task_examples'],
+                                joint = (params['method'] == "joint"),
                                 random_class_idx = params['random_class_idx'])
         input_dim = (3, 28, 28)
     else:
@@ -136,10 +142,7 @@ def main():
             MetricCollector.fairness_metric = "DP"
         else:
             raise AssertionError
-        if params['dataset'] in ["BiasedMNIST"]:
-            from trainers.fair_trainer import FairContinualTrainer3 as ContinualTrainer
-        else:
-            from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
+        from trainers.fair_trainer import FairContinualTrainer2 as ContinualTrainer
 
         if params['method'] == "FSW":
             from algorithms.sensitive import Heuristic3 as Algorithm
