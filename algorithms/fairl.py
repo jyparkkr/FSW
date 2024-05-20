@@ -132,6 +132,7 @@ class FaIRL(Heuristic3):
         self.device = self.params['device']
         self.mem_size = self.params['per_task_memory_examples']
         super().__init__(backbone, benchmark, params, **kwargs)
+        print("FaIRL")
 
     def prepare_train_loader(self, task_id, epoch=0):
         # num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
@@ -154,13 +155,18 @@ class FaIRL(Heuristic3):
             else:
                 raise NotImplementedError
             
-            if "MNIST" in self.params['dataset']:
+            if "mnist" in self.params['dataset'].lower():
                 self.num_target_class = 10
                 self.num_protected_class = 10
-            elif "10" in self.params['dataset']:
+            elif "10" in self.params['dataset'].lower():
                 self.num_target_class = 10
-            elif "100" in self.params['dataset']:
+                self.num_protected_class = 10
+            elif "100" in self.params['dataset'].lower():
                 self.num_target_class = 100
+                self.num_protected_class = 100
+            elif "drug" in self.params['dataset'].lower():
+                self.num_target_class = 6
+                self.num_protected_class = 2
             else:
                 raise NotImplementedError
 
@@ -231,7 +237,7 @@ class FaIRL(Heuristic3):
                                    eps=1e-8)
         return {"optim_G":optim_G, "optim_D":optim_D, "optim_C":optim_C}
 
-    def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):
+    def training_step(self, task_ids, inp, targ, indices, optimizer, criterion, sample_weight=None, sensitive_label=None):
         optim_D = optimizer['optim_D']
         optim_G = optimizer['optim_G']
 
@@ -301,6 +307,10 @@ class FaIRL(Heuristic3):
                 super().training_step(task_ids, inp, targ, optim_C, criterion)
         
     def training_task_end(self):
+        print("training_task_end")
         super().training_task_end()
+        # if self.requires_memory:
+        #     self.update_episodic_memory()
+        # self.current_task += 1
         self.previous_netG = self.netG
         self.previous_backbone = copy.deepcopy(self.backbone)

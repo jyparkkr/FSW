@@ -22,6 +22,7 @@ class Heuristic(ContinualAlgorithm):
         self.backbone = backbone
         self.benchmark = benchmark
         self.params = params
+        self.alpha = self.params['alpha']
         super(Heuristic, self).__init__(backbone, benchmark, params, **kwargs)
 
     def get_num_current_classes(self, task):
@@ -50,6 +51,11 @@ class Heuristic(ContinualAlgorithm):
                                                                           pin_memory=True)
         self.episodic_memory_iter = iter(self.episodic_memory_loader)
 
+    def before_training_task(self):
+        if hasattr(super(), "before_training_task"):
+            super().before_training_task()
+        self.classwise_mean_grad = list()
+
     def sample_batch_from_memory(self):
         try:
             batch = next(self.episodic_memory_iter)
@@ -66,9 +72,23 @@ class Heuristic(ContinualAlgorithm):
         Select what to store in the memory in this step
         """
         print("training_task_end")
-        if self.requires_memory:
-            self.update_episodic_memory()
-        self.current_task += 1
+        if self.current_task > 1 and (self.alpha > 0 or self.params.get('alpha_debug', False)):
+            classwise_mean_grad = torch.stack(self.classwise_mean_grad, dim=1) # num_class * num_epoch
+            x = range(self.params['epochs_per_task']*(self.current_task-1)+1, self.params['epochs_per_task']*(self.current_task)+1)
+            output_dir = self.params['output_dir']
+            for i, e in enumerate(self.benchmark.class_idx[:self.current_task*self.benchmark.num_classes_per_split]):
+                plt.plot(x, classwise_mean_grad[i], label = e)
+            plt.legend()
+            plt.xlabel('epochs')
+            plt.ylabel('classwise gradient norm')
+            os.makedirs(f"{output_dir}/grads", exist_ok=True)
+            plt.show()
+            plt.savefig(f"{output_dir}/grads/tid_{self.current_task}_classwise_grad_norm.pdf", bbox_inches="tight")
+            plt.clf()
+        super().training_task_end()
+        # if self.requires_memory:
+        #     self.update_episodic_memory()
+        # self.current_task += 1
 
     def get_loss_grad(self):
         raise NotImplementedError
@@ -96,7 +116,7 @@ class Heuristic(ContinualAlgorithm):
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
         
-        if self.params['alpha'] == 0:
+        if self.alpha == 0 and not self.params.get('alpha_debug', False):
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
         
@@ -108,14 +128,23 @@ class Heuristic(ContinualAlgorithm):
             self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
+        i = time.time()
         losses, n_grads_all, n_r_new_grads, new_batch = self.get_loss_grad_all(task_id) 
+        print(f"Elapsed time(grad):{np.round(time.time()-i, 3)}")
+
         # n_grads_all: (class_num) * (weight&bias 차원수)
         # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수)
+        if self.alpha == 0:
+            return self.benchmark.load(task_id, self.params['batch_size_train'],
+                                    num_workers=num_workers, pin_memory=True)[0]
 
         print(f"{losses=}")
         # print(f"{n_grads_all.mean(dim=1)=}")
+        
+        if self.params.get('alpha_decay', False) and epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+            self.alpha = self.alpha / 10
 
-        converter_out = self.converter(losses, self.params['alpha'], n_grads_all, n_r_new_grads, task=task_id)
+        converter_out = self.converter(losses, self.alpha, n_grads_all, n_r_new_grads, task=task_id)
         optim_in = list()
         for i, e in enumerate(converter_out):
             if i % 2 == 0:
@@ -127,7 +156,7 @@ class Heuristic(ContinualAlgorithm):
         i = time.time()
         weight = solver(*optim_in)
         
-        print(f"Elapsed time:{np.round(time.time()-i, 3)}")
+        print(f"Elapsed time(optim):{np.round(time.time()-i, 3)}")
         print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
         if len(optim_in) >= 4:
             print(f"Current class expected loss:{np.matmul(optim_in[2], weight)-optim_in[3]}")
@@ -135,13 +164,30 @@ class Heuristic(ContinualAlgorithm):
         tensor_weight = torch.tensor(np.array(weight), dtype=torch.float32)
 
 
-        self.benchmark.update_sample_weight(task_id, tensor_weight)
-
+        # self.benchmark.update_sample_weight(task_id, tensor_weight)
         # Need to update self.benchmark.seq_indices_train[task] - to ignore weight = 0
         drop_threshold = 0.05
-        updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[np.array(weight)>drop_threshold]
-        self.benchmark.seq_indices_train[task_id] = updated_seq_indices.tolist()
+        selected_idx = np.array(weight)>drop_threshold
+        updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[selected_idx]
+        # Good to be len(updated_seq_indices) % params['batch_size_train'] == 0 --> perturb threshold a bit
+        # this is more reliable than drop_last = True
+        if len(updated_seq_indices) % self.params['batch_size_train'] > 0:
+            num_candidate = np.sum(np.logical_not(selected_idx))
+            num_to_add = min(-len(updated_seq_indices) % self.params['batch_size_train'], num_candidate)
+            # added index will be eventually ignored by small weight, this process only affect on batchnorm
+            # just adding all weight-zero indices can causes back-prop error if all the samples in any batch is zero
+            add_idx = np.random.choice(np.where(np.logical_not(selected_idx))[0], num_to_add, replace=False)
+            selected_idx = np.logical_or(selected_idx, np.isin(np.arange(len(weight)), add_idx))
+            updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[selected_idx]
+
+        # modifie
         print(f"{len(updated_seq_indices)=}")
+        self.benchmark.update_sample_weight(task_id, tensor_weight)
+        # self.benchmark.seq_indices_train[task_id] = updated_seq_indices.tolist()
+        # return self.benchmark.load(task_id, self.params['batch_size_train'],
+        #                            num_workers=num_workers, pin_memory=True)[0]
+
+        # but this parameter is not used in rest of the code
         if hasattr(self.benchmark.trains[task_id], "sensitive"):
             print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
 
@@ -170,16 +216,17 @@ class Heuristic(ContinualAlgorithm):
             for k in sen_weight:
                 sen_weight[k] = args[4][args[5]==k].cpu().detach().numpy()
         draw_figs(sen_weight, self.params['output_dir'], drop_threshold, \
-                  self.params['per_task_examples'], task_id, epoch)
+                  min(self.params['per_task_examples'], len(self.benchmark.trains[task_id])), \
+                  task_id, epoch)
+        
         
         # drop the samples below the threshold
         for i, e in enumerate(args):
-            args[i] = e[np.array(weight)>drop_threshold]
+            args[i] = e[selected_idx]
 
         dataset  = WeightModifiedDataset(*args)
-        train_loader = DataLoader(dataset, self.params['batch_size_train'], False, num_workers=num_workers,
+        train_loader = DataLoader(dataset, self.params['batch_size_train'], True, num_workers=num_workers,
                                   pin_memory=True)
-        
         return train_loader
 
 class WeightModifiedDataset(Dataset):

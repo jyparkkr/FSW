@@ -12,11 +12,26 @@ import numpy as np
 import torch
 from PIL import Image
 
+
+# def get_default_cifar_transform(num_tasks: int, is_cifar_100=False):
+#     normalize_mean = CIFAR100_MEAN if is_cifar_100 else CIFAR10_MEAN
+#     normalize_std = CIFAR100_STD if is_cifar_100 else CIFAR10_STD
+#     transforms = torchvision.transforms.Compose([
+#         torchvision.transforms.RandomRotation(20),
+#         torchvision.transforms.RandomHorizontalFlip(0.1),
+#         torchvision.transforms.transforms.ColorJitter(brightness = 0.1, # Randomly adjust color jitter of the images
+#                                                       contrast = 0.1, 
+#                                                       saturation = 0.1), 
+#         torchvision.transforms.ToTensor(),
+#         torchvision.transforms.Normalize(normalize_mean, normalize_std),
+#         torchvision.transforms.RandomErasing(p=0.75,scale=(0.02, 0.1),value=1.0, inplace=False),
+#     ])
+#     return [transforms]*num_tasks
+
 def get_default_cifar_transform(num_tasks: int, is_cifar_100=False):
     normalize_mean = CIFAR100_MEAN if is_cifar_100 else CIFAR10_MEAN
     normalize_std = CIFAR100_STD if is_cifar_100 else CIFAR10_STD
     transforms = torchvision.transforms.Compose([
-        # torchvision.transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
         torchvision.transforms.RandomCrop(32, padding=4),
         torchvision.transforms.RandomHorizontalFlip(),
         torchvision.transforms.ToTensor(),
@@ -153,7 +168,8 @@ class CIFAR100(CIFAR10):
                  per_task_subset_examples: Optional[int] = 0,
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
+                 joint=False,
                  random_class_idx=False):
         super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples,
                          per_task_subset_examples, task_input_transforms, task_target_transforms, 
-                         random_class_idx=random_class_idx, is_cifar_100=True)
+                         random_class_idx=random_class_idx, joint=joint, is_cifar_100=True)

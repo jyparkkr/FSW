@@ -74,7 +74,7 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
                 item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
                 inp, targ, task_ids, *_ = item_to_devices
                 if criterion._get_name() != "BCEWithLogitsLoss":
-                    pred = self.algorithm.backbone(inp, task_ids)
+                    pred = self.algorithm.backbone(inp)
                     total += len(targ)
                     test_loss += criterion(pred, targ).item()
                     pred = pred.data.max(1, keepdim=True)[1]

@@ -31,5 +31,10 @@ class FashionMNIST(MNIST):
     def load_datasets(self):
         self.__load_fashion_mnist()
         for task in range(1, self.num_tasks + 1):
-            self.trains[task] = SplitDataset2(task, 2, self.fashion_mnist_train, class_idx=self.class_idx)
-            self.tests[task] = SplitDataset2(task, 2, self.fashion_mnist_test, class_idx=self.class_idx)
+            train_task = task
+            if self.joint:
+                train_task = [t for t in range(1, task+1)]
+                print(f"{task=}")
+                print(f"{self.num_classes_per_split=}")
+            self.trains[task] = SplitDataset2(train_task, self.num_classes_per_split, self.fashion_mnist_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset2(task, self.num_classes_per_split, self.fashion_mnist_test, class_idx=self.class_idx)

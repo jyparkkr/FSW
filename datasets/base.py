@@ -20,8 +20,10 @@ class SplitDataset1(SplitDataset):
         elif isinstance(dataset.targets, list):
             original_target = np.asarray(dataset.targets)
         # for MNIST-like datasets where targets are tensors
-        else:
+        elif isinstance(dataset.targets, torch.Tensor):
             original_target = dataset.targets.clone().detach().numpy()
+        else:
+            raise NotImplementedError
         self.original_target = original_target
         self.class_idx = np.unique(original_target) if class_idx is None else class_idx
         self.build_split(task_id)
@@ -55,8 +57,11 @@ class SplitDataset1(SplitDataset):
         sample_weight = self.sample_weight[index]
         return img, target, task_id, index, sample_weight
 
-    def getitem_test_transform(self, index: int):
-        idx = self.true_index[index]
+    def getitem_test_transform(self, index: int, true_index=False):
+        if true_index:
+            idx = index
+        else:
+            idx = self.true_index[index]
         img = self.dataset.data[idx]
         if isinstance(img, torch.Tensor):
             img = img.numpy()
@@ -66,17 +71,20 @@ class SplitDataset1(SplitDataset):
             mode = "RGB"
         else:
             mode = "L"
-        img = Image.fromarray(img, mode=mode) 
         if hasattr(self.dataset, "test_transform"):
+            img = Image.fromarray(img, mode=mode) 
             img = self.dataset.test_transform(img)
-        else:
+        elif hasattr(self.dataset, "transform"):
+            img = Image.fromarray(img, mode=mode) 
             img = self.dataset.transform(img)
+        else: # Non-image dataset
+            pass
         return img, target
 
-    def getitem_test_transform_list(self, indices: list):
+    def getitem_test_transform_list(self, indices: list, true_index=False):
         img_list, target_list = [], []
         for idx in indices:
-            img, target = self.getitem_test_transform(idx)
+            img, target = self.getitem_test_transform(idx, true_index=true_index)
             img_list.append(img)
             target_list.append(target)
         return img_list, target_list
@@ -126,10 +134,9 @@ class SplitDataset1(SplitDataset):
 class SplitDataset2(SplitDataset1): # For EER datasets
     def __getitem__(self, index: int):
         img, target, task_id, idx, sample_weight = super().__getitem__(index)
-        return img, target, task_id, idx, sample_weight, target # target as sensitive attribute
+        return img, target, task_id, index, sample_weight, target # target as sensitive attribute
 
-
-class SplitDataset3(SplitDataset1):
+class SplitDataset3(SplitDataset1): # For EO, DP datasets
     def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
         super().__init__(task_id, num_classes_per_split, dataset, class_idx = class_idx)
 
@@ -140,10 +147,9 @@ class SplitDataset3(SplitDataset1):
     def __getitem__(self, index: int):
         img, target, task_id, idx, sample_weight = super().__getitem__(index)
         sen = int(self.sensitives[index])
-        return img, target, task_id, idx, sample_weight, sen
+        return img, target, task_id, index, sample_weight, sen
 
-# For biasedMNIST
-class SplitDataset4(SplitDataset3):
+class SplitDataset4(SplitDataset3): # For BiasedMNIST
     def __getitem__(self, index: int):
         idx = self.true_index[index]
         img = self.dataset.data[idx]
@@ -167,4 +173,4 @@ class SplitDataset4(SplitDataset3):
         else:
             task_id = np.where(self.class_idx == target_)[0][0] // self.num_classes_per_split + 1
 
-        return img, target, task_id, idx, sample_weight, sen
+        return img, target, task_id, index, sample_weight, sen

@@ -13,6 +13,7 @@ from .baselines import BaseContinualAlgoritm
 class iCaRL(BaseContinualAlgoritm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        print(f"iCaRL")
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2
         self.device = self.params['device']
         self.mem_size = self.params['per_task_memory_examples'] * self.params['num_tasks']
@@ -91,7 +92,6 @@ class iCaRL(BaseContinualAlgoritm):
 
     def training_task_end(self):
         # iCaRL task
-        print(f"training_task_end")
         self.backbone.eval()
         current_memory_per_class = self.mem_size // (self.current_task*self.benchmark.num_classes_per_split)
         # print(f"{current_memory_per_class=}")
@@ -164,6 +164,8 @@ class iCaRL(BaseContinualAlgoritm):
         :return: media della classe e features extractor.
         """
         self.backbone.eval()
+        if isinstance(images[0], np.ndarray):
+            images = [torch.from_numpy(img) for img in images]
         images = torch.stack(images).to(self.device)  # 500x3x32x32  #stack vs cat.
         with torch.no_grad():
             phi_X = torch.nn.functional.normalize(self.backbone.forward_embeds(images)[1])
@@ -204,6 +206,8 @@ class iCaRL(BaseContinualAlgoritm):
         :return:
         """
         self.backbone.eval()
+        if isinstance(images[0], np.ndarray):
+            images = [torch.from_numpy(img) for img in images]
         images = torch.stack(images).to(self.device)
         with torch.no_grad():
             phi_X = torch.nn.functional.normalize(self.backbone.forward_embeds(images)[1]).cpu()

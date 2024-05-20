@@ -13,7 +13,61 @@ class FairnessMetric(GeneralMetric):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.agg = kwargs.get('agg', FairnessMetric.agg)
+
+
+class DPMetric(FairnessMetric):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ing = {i:{j:list() for j in range(1, self.epochs_per_task+1)} for i in range(1, self.num_tasks+1)}
     
+    def update_ingredients(self, task_learned, task_evaluated, ingredient, epoch):
+        self.ing[task_learned][epoch].append(ingredient)
+
+    def calculate_dp(self, task=None, epoch=None) -> list:
+        if task is None:
+            task = self.num_tasks
+        if epoch is None:
+            epoch = self.epochs_per_task
+        # merge source dictionary to target dictionary
+        def merge_dict(src, targ):
+            for key in src:
+                targ[key] = targ.get(key, 0) + src[key]
+
+        # classes = 
+        class_pred_count_s0, class_pred_count_s1, class_pred_count = dict(), dict(), dict()
+        count_s0, count_s1, count = 0, 0, 0
+        for t in range(task):
+            ing = self.ing[task][epoch][t]
+            count_s0 += ing['count_s0']
+            count_s1 += ing['count_s1']
+            count += ing['count']
+            merge_dict(ing['class_pred_count_s0'], class_pred_count_s0)
+            merge_dict(ing['class_pred_count_s1'], class_pred_count_s1)
+            merge_dict(ing['class_pred_count'], class_pred_count)
+
+        multiclass_dp = [0.5*(abs(class_pred_count_s0.get(c, 0)/count_s0 - class_pred_count.get(c, 0)/count) + \
+                              abs(class_pred_count_s1.get(c, 0)/count_s1 - class_pred_count.get(c, 0)/count)) for c in sorted(class_pred_count.keys())]
+        dp = np.mean(multiclass_dp)                      
+        return dp
+    
+    def get_dp(self) -> list:
+        dp = list()
+        for task in range(1, self.num_tasks+1):
+            dp.append(self.calculate_dp(task=task))
+        return dp
+    
+    def compute(self, task: int) -> float:
+        if task < 1:
+            raise ValueError("Tasks are 1-based. i.e., the first task's id is 1, not 0.")
+        return self.get_dp()[task-1]
+    
+    def get_data(self, r=3) ->np.ndarray:
+        return np.round(self.get_dp(), r)
+
+    def compute_overall(self) -> float:
+        return self.get_dp()
+
+
 class FairMetricCollector(MetricCollector):
     """
     Collects metrics during the learning.
@@ -49,7 +103,7 @@ class FairMetricCollector(MetricCollector):
                     'accuracy_s1': PerformanceMetric2(self.num_tasks, self.epochs_per_task),
                     'classwise_accuracy': ClasswiseAccuracy(self.num_tasks, self.epochs_per_task),
                     'EO': FairnessMetric(self.num_tasks, self.epochs_per_task),
-                    'DP': FairnessMetric(self.num_tasks, self.epochs_per_task),
+                    'DP': DPMetric(self.num_tasks, self.epochs_per_task),
                     'forgetting': ForgettingMetric(self.num_tasks, self.epochs_per_task),
                     'loss': PerformanceMetric(self.num_tasks, self.epochs_per_task)}
         else:
@@ -64,6 +118,7 @@ class FairMetricCollector(MetricCollector):
             self.meters['classwise_accuracy'].update(task_learned, task_evaluated, metrics['classwise_accuracy'], relative_step)
             self.meters['EO'].update(task_learned, task_evaluated, metrics['EO'], relative_step)
             self.meters['DP'].update(task_learned, task_evaluated, metrics['DP'], relative_step)
+            self.meters['DP'].update_ingredients(task_learned, task_evaluated, metrics['DP_ingredients'], relative_step)
             self.meters['forgetting'].update(task_learned, task_evaluated, metrics['accuracy'], relative_step)
         else:
             self.meters['loss'].update(task_learned, task_evaluated, metrics['loss'], relative_step)

@@ -10,6 +10,7 @@ from cl_gym.algorithms.utils import flatten_grads, assign_grads
 from torch.nn.functional import relu, avg_pool2d
 from algorithms.base import Heuristic
 from algorithms.optimization import absolute_minimax_LP_solver, absolute_minsum_LP_solver, absolute_and_nonabsolute_minsum_LP_solver
+from algorithms.optimization.scipy_solver import absolute_minsum_LP_solver_v3
 
 import matplotlib.pyplot as plt
 
@@ -17,8 +18,14 @@ import time
 import copy
 import os
 
-
 class Heuristic3(Heuristic):
+    def __init__(self, backbone, benchmark, params, **kwargs):
+        super().__init__(backbone, benchmark, params, **kwargs)
+        self.absolute_minimax_LP_solver = absolute_minimax_LP_solver
+        self.absolute_minsum_LP_solver = absolute_minsum_LP_solver
+        self.absolute_minsum_LP_solver_v3 = absolute_minsum_LP_solver_v3
+        self.absolute_and_nonabsolute_minsum_LP_solver = absolute_and_nonabsolute_minsum_LP_solver
+        
     def sample_batch_from_memory(self):
         try:
             batch = next(self.episodic_memory_iter)
@@ -94,7 +101,7 @@ class Heuristic3(Heuristic):
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
         classwise_loss_all, classwise_grad_all, *_ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
-        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=True,
+        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
                                    num_workers=num_workers, pin_memory=True)[0]
         current_loss_all, current_grad_all, new_grads, new_batch = self.get_loss_grad(task_id, train_loader, current_set = True)
         r_new_grads = new_grads[self.non_select_indexes]
@@ -121,23 +128,40 @@ class Heuristic3(Heuristic):
         with torch.no_grad():
             losses = torch.cat(losses, dim=0).view(1,-1)
             grads_all = torch.cat(grads, dim=0)
-            
-            # class별로 변화량이 비슷하도록 normalize
-            n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
-            n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
+            self.classwise_mean_grad.append(torch.norm(grads_all, dim=1))
+
+            # class/group별로 변화량이 비슷하도록 normalize
+            if self.params.get('no_class_grad_norm', False):
+                n_grads_all = grads_all
+            else:
+                n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
+            if self.params.get('no_datapoints_grad_norm', False):
+                n_r_new_grads = r_new_grads
+            else:
+                n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
 
         return losses, n_grads_all, n_r_new_grads, new_batch
-
-    def converter_LP_absolute_additional(self, losses, alpha, grads_all, new_grads, task=None):
+    
+    def converter_LP_absolute_additional_EO(self, losses, alpha, grads_all, new_grads, task=None):
         """
-        for LP with linear additional term
-        return A, b, C, d
+        LP with linear additional term
+        input: 
+            losses: torch.cat([prev_classwise_loss_s0, prev_classwise_loss_s1])
+            alpha: coefficient for gradients
+            grads_all: torch.cat([prev_classwise_gradient_s0, prev_classwise_gradient_s1])
+            new_grads: current data pointwise gradient
+        output: 
+            A: averaged alpha*(prev_classwise_gradient_s0 - prev_classwise_gradient_s1)·pointwise_gradient
+            b: averaged prev_classwise_loss_s0 - prev_classwise_loss_s1
+            C: averaged alpha*classwise_gradient·pointwise_gradient
+            d: averaged prev_classwise_loss
         where A, b are linear coefficient for absolute term, C, d are non-absolute term
+        min_x |b - Ax| + (d - Cx)
         """
         device = 'cpu'
         num_current_classes = self.get_num_current_classes(task)
-        losses = torch.transpose(losses, 0, 1)
-        grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
+        losses = torch.transpose(losses, 0, 1) # (num_class) * (1)
+        grads_all = torch.transpose(grads_all, 0, 1) # (num_class) * (weight&bias 차원수)
         
         n = len(losses)//2
         # m, dim = new_grads.shape
@@ -149,8 +173,8 @@ class Heuristic3(Heuristic):
         ld = torch.zeros([grads_all.shape[0], n], device=device)
 
         for j in range(n):
-            c[j] = losses[j] - losses[n+j]
-            d[:,j] = grads_all[:,j] - grads_all[:,n+j]
+            c[j] = (losses[j] - losses[n+j])/2  # |Z|=2
+            d[:,j] = (grads_all[:,j] - grads_all[:,n+j])/2  # |Z|=2
 
             lc[j] = (losses[j] + losses[n+j])/2
             ld[:,j] = (grads_all[:,j] + grads_all[:,n+j])/2
@@ -174,15 +198,75 @@ class Heuristic3(Heuristic):
         lc[n-num_current_classes:] = lc[n-num_current_classes:]/num_current_classes
         return dg, c, ldg, lc
 
-    def converter_LP_absolute_only(self, losses, alpha, grads_all, new_grads, task=None):
+    def converter_LP_absolute_additional_DP(self, losses, alpha, grads_all, new_grads, task=None):
+        """
+        LP with linear additional term
+        input: 
+            losses: torch.cat([prev_classwise_loss_s0, prev_classwise_loss_s1])
+            alpha: coefficient for gradients
+            grads_all: torch.cat([prev_classwise_gradient_s0, prev_classwise_gradient_s1])
+            new_grads: current data pointwise gradient
+        output: 
+            A: averaged alpha*(prev_classwise_gradient_s0 - prev_classwise_gradient_s1)·pointwise_gradient
+            b: averaged prev_classwise_loss_s0 - prev_classwise_loss_s1
+            C: averaged alpha*classwise_gradient·pointwise_gradient
+            d: averaged prev_classwise_loss
+        where A, b are linear coefficient for absolute term, C, d are non-absolute term
+        min_x |b - Ax| + (d - Cx)
+        """
+        device = 'cpu'
+        num_current_classes = self.get_num_current_classes(task)
+        losses = torch.transpose(losses, 0, 1) # (num_class) * (1)
+        grads_all = torch.transpose(grads_all, 0, 1) # (num_class) * (weight&bias 차원수)
+        
+        n = len(losses)//2
+        def m_y_z(y, z):
+            return self.benchmark.m_dict[z][y]
+        def m_z(z):
+            return np.sum([m_y_z(y, z) for y in self.benchmark.class_idx])
+
+        # m, dim = new_grads.shape
+
+        c = torch.zeros([n, 1], device=device)
+        d = torch.zeros([grads_all.shape[0], n], device=device)
+
+        lc = torch.zeros([n, 1], device=device)
+        ld = torch.zeros([grads_all.shape[0], n], device=device)
+
+        for j in range(n):
+            c[j] = (m_y_z(j, 0) / m_z(0) * losses[j] - m_y_z(j, 1) / m_z(1) * losses[n+j])/2 # |Z|=2
+            d[:,j] = (m_y_z(j, 0) / m_z(0) * grads_all[:,j] - m_y_z(j, 1) / m_z(1) * grads_all[:,n+j])/2
+
+            lc[j] = (losses[j] + losses[n+j])/2
+            ld[:,j] = (grads_all[:,j] + grads_all[:,n+j])/2
+
+        d = alpha*d
+        dg = torch.matmul(d.T, new_grads.T)
+
+        dg, c = dg/n, c/n
+
+        lmbd = self.params.get('lambda', 0.0)
+        lmbd_old = self.params.get('lambda_old', 0.0)
+
+        ld = alpha*ld
+        ldg = torch.matmul(ld.T, new_grads.T)
+
+        ldg, lc = lmbd*ldg, lmbd*lc
+
+        ldg[:n-num_current_classes] = lmbd_old*ldg[:n-num_current_classes]/(n-num_current_classes)
+        ldg[n-num_current_classes:] = ldg[n-num_current_classes:]/num_current_classes
+        lc[:n-num_current_classes] = lmbd_old*lc[:n-num_current_classes]/(n-num_current_classes)
+        lc[n-num_current_classes:] = lc[n-num_current_classes:]/num_current_classes
+        return dg, c, ldg, lc
+
+    def converter_LP_absolute_only_EO(self, losses, alpha, grads_all, new_grads, task=None):
         """
         losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
         only avilable when number of sensitive class is 2
         """
-        A, b, C, d = self.converter_LP_absolute_additional(losses, alpha, grads_all, new_grads, task=task)
+        A, b, C, d = self.converter_LP_absolute_additional_EO(losses, alpha, grads_all, new_grads, task=task)
         return torch.concatenate([A, C], axis=0), torch.concatenate([b, d], axis=0)
 
-        
     def converter_LP_no_losses(self, losses, alpha, grads_all, new_grads, task=None):
         """
         losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
@@ -215,28 +299,32 @@ class Heuristic3(Heuristic):
 
     def prepare_train_loader(self, task_id, epoch=0):
         solver = self.params.get('solver')
-        if (solver is None) or ("absolute_and_nonabsolute" in solver and "LP" in solver):
-            agg = self.params['fairness_agg']
-            if agg == "mean":
-                solver = absolute_and_nonabsolute_minsum_LP_solver
-                self.converter = self.converter_LP_absolute_additional
-            elif agg == "max":
-                solver = absolute_minimax_LP_solver
-                self.converter = self.converter_LP_absolute_only
-            else:
-                raise NotImplementedError
-        elif "absolute" in solver and "LP" in solver:
-            if agg == "mean":
-                solver = absolute_minsum_LP_solver
-                self.converter = self.converter_LP_absolute_only
-            elif agg == "max":
-                solver = absolute_minimax_LP_solver
-                self.converter = self.converter_LP_absolute_only
+        metric = self.params.get('metric')
+        agg = self.params.get('fairness_agg')
+        if solver is None:
+            if metric == "EO" or metric is None:
+                if agg == "mean" or agg is None:
+                    solver = absolute_and_nonabsolute_minsum_LP_solver
+                    self.converter = self.converter_LP_absolute_additional_EO
+                elif agg == "max":
+                    raise NotImplementedError
+                    solver = absolute_minimax_LP_solver
+                    self.converter = self.converter_LP_absolute_only_EO
+                else:
+                    raise NotImplementedError
+            elif metric == "DP":
+                if agg == "mean" or agg is None:
+                    solver = absolute_and_nonabsolute_minsum_LP_solver
+                    self.converter = self.converter_LP_absolute_additional_DP
+                else:
+                    raise NotImplementedError
+            elif metric == "no_metrics":
+                pass
             else:
                 raise NotImplementedError
         else:
-            raise NotImplementedError
-
+            solver = getattr(self, solver)
+            self.converter = getattr(self, self.params.get('converter'))    
         # print(f"{solver=}")
         # print(f"{self.converter=}")
         return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)

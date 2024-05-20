@@ -15,7 +15,7 @@ class MLP2Layers2(MLP2Layers):
             class_idx = list(range(output_dim))
         self.class_idx = class_idx
         self.num_classes_per_head=output_dim//config['num_tasks']
-        super().__init__(num_classes_per_head=self.num_classes_per_head, 
+        super().__init__(num_classes_per_head=self.num_classes_per_head, multi_head=False,
                          input_dim=input_dim, hidden_dim_1=hidden_dim_1, hidden_dim_2=hidden_dim_2,
                          output_dim=output_dim, dropout_prob=dropout_prob, activation=activation,
                          bias=bias, include_final_layer_act=include_final_layer_act)
@@ -29,7 +29,7 @@ class MLP2Layers2(MLP2Layers):
         for block in self.blocks:
             embeds = out
             out = block(out)
-        if self.multi_head:
+        if self.multi_head and head_ids is not None:
             embeds = out
             out = self.select_output_head(out, head_ids, self.num_classes_per_head, self.class_idx)
         return out, embeds
@@ -37,6 +37,6 @@ class MLP2Layers2(MLP2Layers):
     def forward_classifier(self, embeds: torch.Tensor, head_ids: Optional[Iterable] = None):
         classifier = self.blocks[-1]
         out = classifier(embeds)
-        if self.multi_head:
+        if self.multi_head and head_ids is not None:
             out = self.select_output_head(out, head_ids, self.num_classes_per_head, self.class_idx)
         return out
