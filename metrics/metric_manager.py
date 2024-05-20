@@ -85,7 +85,7 @@ class PerformanceMetric2(PerformanceMetric):
         task_mean = list()
         for i, task in enumerate(data):
             task_mean.append(np.mean(task[:i+1]))
-        return np.mean(task_mean)
+        return task_mean
 
 class StdMetric(PerformanceMetric2):
     def __init__(self, 
@@ -128,8 +128,7 @@ class StdMetric(PerformanceMetric2):
         return np.round(self.get_std(), r)
 
     def compute_overall(self) -> float:
-        data = self.get_std()
-        return np.mean(data)
+        return self.get_std()
 
 class EERMetric(PerformanceMetric2):
     def __init__(self, 
@@ -172,6 +171,7 @@ class EERMetric(PerformanceMetric2):
         return np.round(self.get_eer(), r)
 
     def compute_overall(self) -> float:
+        return self.get_eer()
         data = self.get_eer()
         return np.mean(data)
 
@@ -238,7 +238,7 @@ class MetricCollector2(MetricCollector):
         
         if self.eval_type == 'classification':
             trainer.logger.log_metric(f'acc_{task_evaluated}', round(metrics['accuracy'], 2), global_step)
-            trainer.logger.log_metric(f'EER_{task_evaluated}', round(metrics['EER'], 2), global_step)
+            # trainer.logger.log_metric(f'EER_{task_evaluated}', round(metrics['EER'], 2), global_step)
             trainer.logger.log_metric(f'std_{task_evaluated}', round(metrics['std'], 2), global_step)
             trainer.logger.log_metric(f'loss_{task_evaluated}', round(metrics['loss'], 2), global_step)
             if trainer.current_task > 0:

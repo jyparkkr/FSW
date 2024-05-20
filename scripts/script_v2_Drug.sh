@@ -1,51 +1,64 @@
 #!/bin/bash
 
 CURRENT="$PWD"
-DATASET="FashionMNIST" #MNIST FashionMNIST BiasedMNIST
+DATASET="Drug" #MNIST FashionMNIST BiasedMNIST Drug
 PER_CLASS_EXAMPLE=100000 # np.inf
 TAU=5
-ALPHA=0.00
-LAMBDA=0.0
+ALPHA=0.002
+LAMBDA=0.01
 VERBOSE=2
+METHOD="FSW"
+METRIC="EO"
 
 cnt=0
 # for SEED in {0..4}; do
 for SEED in 10; do
-for EPOCH in 1 5; do
-for TAU in 0.0; do
-for LR in 0.001 0.01; do
-for ALPHA in 0.0; do
-for DATASET in "FashionMNIST" "MNIST"; do
-for LAMBDA in 0.0; do
+for EPOCH in 25; do
+for TAU in 0.5 1.0 5.0 10.0; do
+for LR in 0.01 0.001; do
+for ALPHA in 0.0005 0.001 0.002 0.005 0.01 0.02 0.05; do
+for LAMBDA in 0.01 0.1 1.0 5.0 10.0; do
     if [[ $DATASET == "MNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        PER_CLASS_EXAMPLE=5000
         BUFFER_PER_CLASS=32
-        METRIC="std"
     elif [[ $DATASET == "FashionMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
-        METRIC="std"
     elif [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=64
-        METRIC="EO"
+        BUFFER_PER_CLASS=32
+    elif [[ $DATASET == "Drug" ]]; then
+        MODEL="MLP"
+        NUM_TASK=3
+        PER_TASK_CLASS=2
+        BUFFER_PER_CLASS=32
+    elif [[ $DATASET == "CIFAR10" ]]; then
+        ROOT="resnet18"
+        NUM_TASK=5
+        PER_TASK_CLASS=2
+        BUFFER_PER_CLASS=32
     else
         ROOT="resnet18"
         NUM_TASK=10
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=64
-        METRIC="std"
+        BUFFER_PER_CLASS=32
     fi
-    NUM_TASK=1
 
-    EXP_DUMP="dataset=${DATASET}/joint/seed=${SEED}_epoch=${EPOCH}_lr=${LR}"
+    EXP_DUMP="dataset=${DATASET}/${METHOD}/${METRIC}"
+    EXP_DUMP="${EXP_DUMP}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}"
+    if [[ $ALPHA != 0.0 ]]; then
+        EXP_DUMP="${EXP_DUMP}_alpha=${ALPHA}"
+    fi
+    if [[ $LAMBDA != 0.0 ]]; then
+        EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
+    fi
+
     echo "EXP_DUMP:"
     echo "$EXP_DUMP" > /dev/stdout
 
@@ -61,6 +74,7 @@ for LAMBDA in 0.0; do
     ~/anaconda3/envs/cil/bin/python run.py \
                            --dataset $DATASET \
                            --model $MODEL \
+                           --method $METHOD \
                            --seed $SEED \
                            --num_task $NUM_TASK \
                            --epochs_per_task $EPOCH \
@@ -74,16 +88,14 @@ for LAMBDA in 0.0; do
                            --learning_rate $LR \
                            --momentum 0.9 \
                            --learning_rate_decay 1.0 \
-                           --algorithm optimization \
                            --metric $METRIC \
                            --fairness_agg "mean" \
                            --alpha $ALPHA \
                            --lambda $LAMBDA \
                            --lambda_old 0 \
-                           --cuda 6 \
+                           --cuda 7 \
                            --verbose $VERBOSE \
-                           1> $LOG_STDOUT 2> $LOG_STDERR
-done
+                        #    1> $LOG_STDOUT 2> $LOG_STDERR
 done
 done
 done

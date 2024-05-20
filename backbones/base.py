@@ -17,6 +17,7 @@ def select_output_head(output, head_ids: Iterable, num_classes_per_split: int, c
         output: The output where for each example in batch is calculated from one head in head_ids.
     """
     # TODO: improve performance by vectorizing this operation.
+    # TODO: this doesn't work for random index
     # However, not too bad for now since number of classes is small (usually 2 or 5).
 
     for i, head in enumerate(head_ids):

@@ -4,18 +4,17 @@ import torch
 import numpy as np
 import subprocess
 import copy
-from datasets import __all__ as dataset_list, fairness_dataset
+from datasets import __all__ as datasets, fairness_datasets
 
 # model_pool = ["MLP", "resnet18small", "resnet18"]
 model_pool = ["MLP", "resnet18"]
 optimizer_pool = ["sgd", "adam"]
-algorithm_pool = ["optimization", "greedy"]
 metric_pool = ["std", "EER", "EO", "DP", "no_metrics"]
-method_pool = ['FSW', "FSS", 'joint', 'finetune', 'AGEM', "GSS", "iCaRL"]
+method_pool = ['vanilla', 'FSW', "FSS", 'joint', 'finetune', 'AGEM', "GSS", "iCaRL", "WA", "OCS", "FaIRL"]
 
 def parse_option():
     parser = argparse.ArgumentParser('argument for training')
-    parser.add_argument('--dataset', type=str, default='MNIST', choices=dataset_list)
+    parser.add_argument('--dataset', type=str, default='MNIST', choices=datasets)
     parser.add_argument('--model', type=str, default='MLP', choices=model_pool)
     parser.add_argument('--seed', type=int, default=0,
                         help='Seed for torch and np.')
@@ -39,6 +38,8 @@ def parse_option():
                         help='Size of validation batch.')
     parser.add_argument('--random_class_idx', action='store_true',
                         help='Randomize class order')
+    parser.add_argument('--alpha_decay', action='store_true',
+                        help='alpha decay follows learning rate decay epoch')
     parser.add_argument('--tau', type=float, default=5,
                         help='Hyperparameter of update weight on memory.')
 
@@ -74,7 +75,7 @@ def parse_option():
 
     # raise NotImplemented
     if opt.metric == "EO":
-        if opt.dataset not in fairness_dataset:
+        if opt.dataset not in fairness_datasets:
             raise ValueError(f"Wrong dataset({opt.dataset}) for corresponding metric({opt.metric}).")
         
     if opt.method == "GSS":
@@ -89,8 +90,6 @@ def make_params(args) -> dict:
     params = dict()
     for arg in vars(args):
         params[arg] = getattr(args, arg)
-        if args.verbose > 1:
-            print(f"\t\"{arg}\" : \"{params[arg]}\", \\")
 
     params['device'] = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
     params['criterion'] = torch.nn.CrossEntropyLoss()
@@ -102,37 +101,45 @@ def make_params(args) -> dict:
         trial_id+="_randidx"
 
     # define method
-    if params['num_tasks'] == 1:
-        params['method'] = 'joint'
-    elif params['tau'] == 0:
-        params['method'] = 'finetune'
-
     if params['method'] == 'joint':
-        params['num_tasks'] == 1
+        params['alpha'] == 0.0
+        params['tau'] == 0.0
+        
     elif params['method'] == 'finetune':
         params['tau'] == 0
     trial_id = os.path.join(trial_id, f"{params['method']}")
 
     epoch = params['epochs_per_task']
-    if epoch > 50 and epoch <= 100:
-        params['learning_rate_decay_epoch'] = [30, 50, 70]
-    if epoch > 100 and epoch <= 150:
-        params['learning_rate_decay_epoch'] = [30, 60, 90, 120]
-    if epoch > 150 and epoch <= 200:
-        params['learning_rate_decay_epoch'] = [40, 80, 120, 160]
+    if epoch <= 50:
+        params['learning_rate_decay_epoch'] = [30]
+    elif epoch > 50 and epoch <= 100:
+        params['learning_rate_decay_epoch'] = [30, 60, 90]
+    elif epoch > 100 and epoch <= 150:
+        params['learning_rate_decay_epoch'] = [45, 90, 135]
+    elif epoch > 150 and epoch <= 200:
+        params['learning_rate_decay_epoch'] = [60, 120, 180]
+    elif epoch > 200: # WA
+        params['learning_rate_decay_epoch'] = [50, 100, 150, 200]
+    else:
+        raise AssertionError
 
     # define metrics
     trial_id = os.path.join(trial_id, f"{params['metric']}")
 
     # add hyperparameters
     trial_id = os.path.join(trial_id, \
-                            f"seed={params['seed']}_model={params['model']}_epoch={params['epochs_per_task']}_lr={params['learning_rate']}")
+                            # f"seed={params['seed']}_model={params['model']}_epoch={params['epochs_per_task']}_lr={params['learning_rate']}")
+                            f"seed={params['seed']}_epoch={params['epochs_per_task']}_lr={params['learning_rate']}")
     # contain tau (buffer parameter) if buffer is used
-    if params['method'] in ["FSS", "FSW", "GSS"]: 
-        trial_id += f"_tau={params['tau']}"
+    # if params['method'] in ["FSS", "FSW", "GSS"]: 
+    trial_id += f"_tau={params['tau']}"
     # contain alpha for current data selection
     if params['method'] in ["FSS", "FSW"]: 
         trial_id += f"_alpha={params['alpha']}"
+    
+    # if params['alpha_decay']:
+    #     trial_id += f"_decay"
+
     if params['lambda'] != 0:
         trial_id+=f"_lmbd={params['lambda']}_lmbdold={params['lambda_old']}"
     params['trial_id'] = trial_id
@@ -140,5 +147,8 @@ def make_params(args) -> dict:
     if args.verbose > 1:
         print(f"output_dir={params['output_dir']}")
     Path(params['output_dir']).mkdir(parents=True, exist_ok=True)
+    if args.verbose > 1:
+        for k in params:
+            print(f"\t\"{k}\" : \"{params[k]}\", \\")
     
     return params

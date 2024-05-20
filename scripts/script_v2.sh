@@ -8,6 +8,7 @@ ALPHA=0.002
 LAMBDA=0.01
 VERBOSE=2
 METHOD="FSW"
+METRIC="EER"
 
 cnt=0
 # for SEED in {0..4}; do
@@ -21,37 +22,34 @@ for LAMBDA in 1.0 5.0 10.0; do
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        PER_CLASS_EXAMPLE=5000
         BUFFER_PER_CLASS=32
-        METRIC="EER"
     elif [[ $DATASET == "FashionMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
-        METRIC="EER"
     elif [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=64
-        METRIC="EO"
+        BUFFER_PER_CLASS=32
     elif [[ $DATASET == "CIFAR10" ]]; then
         MODEL="resnet18small"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=256
-        METRIC="EER"
+        BUFFER_PER_CLASS=32
     else
         ROOT="resnet18"
         NUM_TASK=10
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=64
-        METRIC="std"
     fi
 
     EXP_DUMP="dataset=${DATASET}/${METHOD}/${METRIC}"
-    EXP_DUMP="${EXP_DUMP}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}_alpha=${ALPHA}"
+    EXP_DUMP="${EXP_DUMP}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}"
+    if [[ $ALPHA != 0.0 ]]; then
+        EXP_DUMP="${EXP_DUMP}_alpha=${ALPHA}"
+    fi
     if [[ $LAMBDA != 0.0 ]]; then
         EXP_DUMP="${EXP_DUMP}_lmbd=${LAMBDA}_lmbdold=0.0"
     fi

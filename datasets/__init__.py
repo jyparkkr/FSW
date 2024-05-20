@@ -3,6 +3,7 @@ from .mnist import MNIST
 from .fashion_mnist import FashionMNIST
 from .fair_mnist import FairMNIST
 from .cifar import CIFAR10, CIFAR100
+from .drug import Drug
 from .base import SplitDataset1, SplitDataset3
 
 __all__ = ['BiasedMNIST',
@@ -11,8 +12,10 @@ __all__ = ['BiasedMNIST',
            'FairMNIST',
            'CIFAR10',
            'CIFAR100',
+           'Drug',
 ]
 
-fairness_dataset = ['BiasedMNIST',
-                    'FairMNIST',
+fairness_datasets = ['BiasedMNIST',
+                     'FairMNIST',
+                     'Drug',
 ]

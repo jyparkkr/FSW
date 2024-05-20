@@ -67,6 +67,25 @@ class BiasedMNIST(MNIST):
         self.mnist_train = mnist_train
         self.mnist_test = mnist_test
 
+        self._calculate_yz_num(self.mnist_train)
+
+    def _calculate_yz_num(self, dataset):
+        sen = dataset.sensitives
+        targ = dataset.targets
+        # m_dict = {s:[0 for c in self.class_idx] for s in np.unique(sen)}
+        # for i, e in enumerate(sen):
+        #     m_dict[e][targ[i]]+=1
+
+        # this is for BiasedMNIST
+        m_dict = {s:[0 for c in self.class_idx] for s in [0, 1]}
+        for i, e in enumerate(sen):
+            if e == targ[i]:
+                m_dict[0][targ[i]]+=1
+            else:
+                m_dict[1][targ[i]]+=1
+        # key is sen
+        self.m_dict = m_dict 
+
     def load_datasets(self):
         self.__load_mnist()
         for task in range(1, self.num_tasks + 1):

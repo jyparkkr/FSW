@@ -34,7 +34,7 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
         # called after every epoch starts, before every training step begins 
         pass
 
-    def prepare_train_loader(self, task_id):
+    def prepare_train_loader(self, task_id, epoch=None):
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         return self.benchmark.load(task_id, self.params['batch_size_train'],
                                    num_workers=num_workers, pin_memory=True)[0]
@@ -91,9 +91,11 @@ class BaseMemoryContinualAlgoritm(BaseContinualAlgoritm):
         return inp.to(device), targ.to(device), task_id.to(device)
 
     def training_task_end(self):
-        if self.requires_memory:
-            self.update_episodic_memory()
-        self.current_task += 1
+        print("training_task_end")
+        super().training_task_end()
+        # if self.requires_memory:
+        #     self.update_episodic_memory()
+        # self.current_task += 1
 
     def update_episodic_memory(self):
         # called when training_task_end

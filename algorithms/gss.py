@@ -36,6 +36,7 @@ def cosine_similarity(x1, x2=None, eps=1e-8):
 class GSSGreedy(BaseMemoryContinualAlgoritm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        print("GSSGreedy")
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2
         self.params = args[2]
         self.mem_strength = self.params['batch_size_train']*2 # hyperparameter
