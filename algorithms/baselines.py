@@ -31,8 +31,11 @@ class BaseContinualAlgoritm(ContinualAlgorithm):
         pass
 
     def before_training_epoch(self):
-        # called after every epoch starts, before every training step begins 
-        pass
+        if hasattr(super(), "before_training_task"):
+            super().before_training_task()
+        self.weight_for_task = list()
+        self.classwise_mean_grad = list()
+
 
     def prepare_train_loader(self, task_id, epoch=None):
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())

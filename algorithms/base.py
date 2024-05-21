@@ -23,6 +23,7 @@ class Heuristic(ContinualAlgorithm):
         self.benchmark = benchmark
         self.params = params
         self.alpha = self.params['alpha']
+        self.weight_all = list()
         super(Heuristic, self).__init__(backbone, benchmark, params, **kwargs)
 
     def get_num_current_classes(self, task):
@@ -54,6 +55,7 @@ class Heuristic(ContinualAlgorithm):
     def before_training_task(self):
         if hasattr(super(), "before_training_task"):
             super().before_training_task()
+        self.weight_for_task = list()
         self.classwise_mean_grad = list()
 
     def sample_batch_from_memory(self):
@@ -85,6 +87,7 @@ class Heuristic(ContinualAlgorithm):
             plt.show()
             plt.savefig(f"{output_dir}/grads/tid_{self.current_task}_classwise_grad_norm.pdf", bbox_inches="tight")
             plt.clf()
+        self.weight_all.append(self.weight_for_task)
         super().training_task_end()
         # if self.requires_memory:
         #     self.update_episodic_memory()
@@ -180,7 +183,7 @@ class Heuristic(ContinualAlgorithm):
             selected_idx = np.logical_or(selected_idx, np.isin(np.arange(len(weight)), add_idx))
             updated_seq_indices = np.array(self.benchmark.seq_indices_train[task_id])[selected_idx]
 
-        # modifie
+        # modified
         print(f"{len(updated_seq_indices)=}")
         self.benchmark.update_sample_weight(task_id, tensor_weight)
         # self.benchmark.seq_indices_train[task_id] = updated_seq_indices.tolist()
@@ -190,9 +193,6 @@ class Heuristic(ContinualAlgorithm):
         # but this parameter is not used in rest of the code
         if hasattr(self.benchmark.trains[task_id], "sensitive"):
             print(f"sensitive samples / selected samples = {(self.benchmark.trains[task_id].sensitive[updated_seq_indices] != self.benchmark.trains[task_id].targets[updated_seq_indices]).sum().item()} / {len(updated_seq_indices)}")
-
-        # return self.benchmark.load(task_id, self.params['batch_size_train'],
-        #                            num_workers=num_workers, pin_memory=True)[0]
 
         lists = [list() for _ in new_batch[0]]
         for items in new_batch:
@@ -215,10 +215,10 @@ class Heuristic(ContinualAlgorithm):
             sen_weight = {sen.item():None for sen in sen_labels}
             for k in sen_weight:
                 sen_weight[k] = args[4][args[5]==k].cpu().detach().numpy()
+        self.weight_for_task.append(sen_weight)
         draw_figs(sen_weight, self.params['output_dir'], drop_threshold, \
                   min(self.params['per_task_examples'], len(self.benchmark.trains[task_id])), \
                   task_id, epoch)
-        
         
         # drop the samples below the threshold
         for i, e in enumerate(args):
@@ -239,7 +239,7 @@ class WeightModifiedDataset(Dataset):
     
     def __getitem__(self, idx):
         return tuple(arg[idx] for arg in self.args)
-    
+
 
 def draw_figs(weight_dict, output_dir, drop_threshold, y_lim, tid, epoch):
     num_bins = 20

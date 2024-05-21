@@ -151,6 +151,7 @@ class Drug(Benchmark):
             train_task = task
             if self.joint:
                 train_task = [t for t in range(1, task+1)]
+                print(f"{train_task=}")
             self.trains[task] = SplitDataset3(train_task, self.num_classes_per_split, self.drug_train, class_idx=self.class_idx)
             self.tests[task] = SplitDataset3(task, self.num_classes_per_split, self.drug_test, class_idx=self.class_idx)
 
@@ -214,6 +215,17 @@ class Drug(Benchmark):
                                                         replace=False)
                     class_indices += list(selected_indices)
         return class_indices
+
+    def update_sample_weight(self, task, sample_weight, idx = None):
+        """
+        true index: self.seq_indices_train[task] (list)
+        """
+        if idx is None:
+            idx = self.seq_indices_train[task]
+        weight = self.trains[task].sample_weight
+        weight[idx] = sample_weight
+        self.trains[task].update_weight(weight)
+
 
     def precompute_memory_indices(self):
         for task in range(1, self.num_tasks + 1):
