@@ -11,7 +11,7 @@ METRIC="EO"
 cnt=0
 # for SEED in {0..4}; do
 for SEED in 10; do
-for EPOCH in 2; do
+for EPOCH in 15; do
 for TAU in 1.0 5.0 10.0; do
 for LR in 0.01 0.001; do
 for ALPHA in 0.0005 0.001 0.002 0.005 0.01; do
