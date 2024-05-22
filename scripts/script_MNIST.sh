@@ -71,9 +71,9 @@ for LAMBDA in 0.1 0.5 1.0 5.0 10.0; do
                            --alpha $ALPHA \
                            --lambda $LAMBDA \
                            --lambda_old 0 \
-                           --cuda 7 \
+                           --cuda 0 \
                            --verbose $VERBOSE \
-                        #    1> $LOG_STDOUT 2> $LOG_STDERR
+                           1> $LOG_STDOUT 2> $LOG_STDERR
 done
 done
 done

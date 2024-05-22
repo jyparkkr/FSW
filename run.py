@@ -35,7 +35,7 @@ def main():
     params['num_dataloader_workers'] = torch.get_num_threads()
 
     # dataset
-    from datasets import MNIST, FashionMNIST, BiasedMNIST, CIFAR10, CIFAR100, Drug
+    from datasets import MNIST, FashionMNIST, BiasedMNIST, Drug
     if params['dataset'] == 'MNIST':
         benchmark = MNIST(num_tasks=params['num_tasks'],
                           per_task_memory_examples=params['per_task_memory_examples'],
@@ -50,20 +50,6 @@ def main():
                                  joint = (params['method'] == "joint"),
                                  random_class_idx = params['random_class_idx'])
         input_dim = (28, 28)
-    elif params['dataset'] == 'CIFAR10':
-        benchmark = CIFAR10(num_tasks=params['num_tasks'],
-                            per_task_memory_examples=params['per_task_memory_examples'],
-                            per_task_examples = params['per_task_examples'],
-                            joint = (params['method'] == "joint"),
-                            random_class_idx = params['random_class_idx'])
-        input_dim = (3, 32, 32)
-    elif params['dataset'] == 'CIFAR100':        
-        benchmark = CIFAR100(num_tasks=params['num_tasks'],
-                             per_task_memory_examples=params['per_task_memory_examples'],
-                             per_task_examples = params['per_task_examples'],
-                             joint = (params['method'] == "joint"),
-                             random_class_idx = params['random_class_idx'])
-        input_dim = (3, 32, 32)
     elif params['dataset'] in ["BiasedMNIST"]:
         benchmark = BiasedMNIST(num_tasks=params['num_tasks'],
                                 per_task_memory_examples=params['per_task_memory_examples'],
@@ -94,14 +80,6 @@ def main():
             class_idx=class_idx,
             config=params
             ).to(params['device'])
-    # elif params['model'] == "resnet18small": 
-    #     from backbones import ResNet18Small2
-    #     backbone = ResNet18Small2(
-    #         input_dim=input_dim, 
-    #         output_dim=num_classes,
-    #         class_idx=class_idx,
-    #         config=params
-    #         ).to(params['device'])
     elif params['model'] == "resnet18": 
         from backbones import ResNet18
         backbone = ResNet18(
@@ -128,8 +106,6 @@ def main():
             from algorithms.imbalance import ImbalanceAlgorithm as Algorithm
         elif params['dataset'] in fairness_datasets:
             from algorithms.sensitive import SensitiveAlgorithm as Algorithm
-    elif params['method'] in ["FSS"]:
-        from algorithms.imbalance_greedy import BaseAlgorithm1 as Algorithm
     elif params['method'] in ["AGEM"]:
         from algorithms.agem import AGEM as Algorithm
     elif params['method'] in ["GSS"]:
