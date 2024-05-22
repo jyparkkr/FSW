@@ -25,7 +25,7 @@ class Heuristic3(Heuristic):
         self.absolute_minsum_LP_solver = absolute_minsum_LP_solver
         self.absolute_minsum_LP_solver_v3 = absolute_minsum_LP_solver_v3
         self.absolute_and_nonabsolute_minsum_LP_solver = absolute_and_nonabsolute_minsum_LP_solver
-        
+
     def sample_batch_from_memory(self):
         try:
             batch = next(self.episodic_memory_iter)
@@ -73,9 +73,11 @@ class Heuristic3(Heuristic):
             bias_expand = torch.repeat_interleave(bias_grads, embeds.shape[1], dim=1)
             weight_grads = bias_expand * embeds.repeat(1, pred.shape[1])
             grads = torch.cat([bias_grads, weight_grads], dim=1)
-            sensitive = torch.ne(targ, sensitive_label)
+            if self.params['dataset'] == "BiasedMNIST":
+                sensitive = torch.ne(targ, sensitive_label)
+            else:
+                sensitive = sensitive_label
             sensitive = sensitive.long()
-
             grads = grads.cpu()
 
             for i, e in enumerate(targ):
@@ -96,7 +98,7 @@ class Heuristic3(Heuristic):
         classwise_loss_all = [classwise_loss_s0, classwise_loss_s1]
         classwise_grad_all = [classwise_grad_s0, classwise_grad_s1]
         return classwise_loss_all, classwise_grad_all, new_grads, loaded_batch
-    
+
     def get_loss_grad_all(self, task_id):
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
@@ -130,7 +132,7 @@ class Heuristic3(Heuristic):
             grads_all = torch.cat(grads, dim=0)
             self.classwise_mean_grad.append(torch.norm(grads_all, dim=1))
 
-            # class/group별로 변화량이 비슷하도록 normalize
+            # normalize to make class/group difference be similar
             if self.params.get('no_class_grad_norm', False):
                 n_grads_all = grads_all
             else:

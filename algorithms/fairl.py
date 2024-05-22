@@ -144,7 +144,8 @@ class FaIRL(Heuristic3):
         """
         called before loader, optimizer, criterion initialized
         """
-        # init
+        if hasattr(super(), "before_training_task"):
+            super().before_training_task()
         if not hasattr(self, "embedding_size"):
             if self.params['model'] == "MLP":
                 self.embedding_size = 256
@@ -194,6 +195,7 @@ class FaIRL(Heuristic3):
         self.netD.to(self.device)
 
         self.mcr_loss = MCR(numclasses=self.num_target_class)
+
 
     def before_training_epoch(self):
         self.netD.train()
