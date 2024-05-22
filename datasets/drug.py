@@ -1,6 +1,3 @@
-# code adapted from https://github.com/brcsomnath/FaIRL/blob/main/src/dataloader/mnist_data_create.py
-# Sustaining Fairness via Incremental Learning, AAAI 2023
-
 import torch
 import torchvision
 import numpy as np

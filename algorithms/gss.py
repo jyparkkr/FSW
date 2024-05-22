@@ -1,7 +1,3 @@
-# Copyright 2019-present, MILA, KU LEUVEN.
-# All rights reserved.
-# code imported and modified from https://github.com/RaptorMai/online-continual-learning/blob/main/utils/buffer/gss_greedy_update.py
-
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
@@ -10,7 +6,9 @@ from .baselines import BaseMemoryContinualAlgoritm
 
 def get_grad_vector(pp, grad_dims, device):
     """
-        gather the gradients in one vector
+    Re-implementation of Gradient based sample selection for online continual learning (NeuIPS 2019)
+    code imported and modified from https://github.com/RaptorMai/online-continual-learning/blob/main/utils/buffer/gss_greedy_update.py
+    Hyperparameter follows the official code
     """
     grads = torch.Tensor(sum(grad_dims)).to(device)
     grads.fill_(0.0)

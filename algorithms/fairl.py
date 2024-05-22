@@ -1,5 +1,3 @@
-# code imported and modified from https://github.com/brcsomnath/FaIRL
-
 """
 adversarial debiasing for removing demographic information by controlling the number of bits (rate-distortion)
 required to encode the learned representations
@@ -27,8 +25,8 @@ from typing import Optional, Dict, Iterable
 import copy
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
 
-from .base import Heuristic
-from .sensitive import Heuristic3
+from .base import BaseAlgorithm
+from .sensitive import SensitiveAlgorithm
 
 class IdentityNet(nn.Module):
     def __init__(self, *args, **kwargs) -> None:
@@ -124,7 +122,12 @@ class MCR(nn.Module):
         return -total_loss, (discrimn_loss, compress_term, compress_loss, scalars)
     
 
-class FaIRL(Heuristic3):
+class FaIRL(SensitiveAlgorithm):
+    """
+    Re-implementation of Sustaining Fairness via Incremental Learning, Somnath Basu Roy Chowdhury et al. (AAAI 2022)
+    Code imported and modified from https://github.com/brcsomnath/FaIRL
+    Hyperparameter follows the official code
+    """
     def __init__(self, backbone, benchmark, params, **kwargs):
         self.backbone = backbone
         self.benchmark = benchmark
@@ -138,7 +141,7 @@ class FaIRL(Heuristic3):
         # num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         # return self.benchmark.load(task_id, self.params['batch_size_train'],
         #                            num_workers=num_workers, pin_memory=True)[0]
-        return super(Heuristic, self).prepare_train_loader(task_id)
+        return super(BaseAlgorithm, self).prepare_train_loader(task_id)
 
     def before_training_task(self):
         """

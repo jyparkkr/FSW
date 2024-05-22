@@ -1,4 +1,3 @@
-# code imported and modified from https://github.com/jaehong31/OCS
 
 import torch
 import torch.nn as nn
@@ -76,6 +75,11 @@ def fast_cifar_loader(loaders, task_id, eval=True, device='cpu'):
 
 
 class OCS(BaseMemoryContinualAlgoritm):
+    """
+    Re-implementation of Online Coreset Selection for Rehearsal-based Continual Learning (ICLR 2022)
+    Code imported and modified from https://github.com/jaehong31/OCS
+    Hyperparameter follows the official code
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # the number of gradient vectors to estimate new samples similarity, line 5 in alg.2

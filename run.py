@@ -125,11 +125,11 @@ def main():
     # load algorithm & trainer for other baselines
     if params['method'] in ['vanilla', "FSW", 'joint', 'finetune']:
         if params['dataset'] not in fairness_datasets:
-            from algorithms.imbalance import Heuristic2 as Algorithm
+            from algorithms.imbalance import ImbalanceAlgorithm as Algorithm
         elif params['dataset'] in fairness_datasets:
-            from algorithms.sensitive import Heuristic3 as Algorithm
+            from algorithms.sensitive import SensitiveAlgorithm as Algorithm
     elif params['method'] in ["FSS"]:
-        from algorithms.imbalance_greedy import Heuristic1 as Algorithm
+        from algorithms.imbalance_greedy import BaseAlgorithm1 as Algorithm
     elif params['method'] in ["AGEM"]:
         from algorithms.agem import AGEM as Algorithm
     elif params['method'] in ["GSS"]:

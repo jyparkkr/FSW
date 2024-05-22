@@ -6,9 +6,13 @@ import numpy as np
 
 import copy
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
-from .baselines import BaseContinualAlgoritm
+from .baselines import BaselineContinualAlgoritm
 
-class WA(BaseContinualAlgoritm):
+class WA(BaselineContinualAlgoritm):
+    """
+    Re-implementation of Maintaining Discrimination and Fairness in Class Incremental Learning (Weight Aligning)
+    Hyperparameter follows the official code
+    """
     def __init__(self, backbone, benchmark, params, requires_memory=True):
         super().__init__(backbone, benchmark, params, requires_memory=requires_memory)
         self.T = 2
