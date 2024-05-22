@@ -3,7 +3,7 @@
 $ conda env create -f py39.yaml
 $ pip install cl-gym
 ```
-For more information of cl-gym library, you can refer the [imirzadeh/CL-Gym](https://github.com/imirzadeh/CL-Gym).
+For more information on the cl-gym library, refer to [imirzadeh/CL-Gym](https://github.com/imirzadeh/CL-Gym).
 
 ## Run
 1. __MNIST__ experiment
