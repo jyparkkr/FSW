@@ -1,12 +1,12 @@
 from .finetune import Finetune
-from .base import Heuristic
-from .imbalance import Heuristic2 as Weighting
-from .imbalance_greedy import Heuristic1 as GreedySelection
-from .sensitive import Heuristic3
+from .base import BaseAlgorithm
+from .imbalance import ImbalanceAlgorithm as Weighting
+from .imbalance_greedy import BaseAlgorithm1 as GreedySelection
+from .sensitive import SensitiveAlgorithm
 
 
-__all__ = ['Heuristic',
+__all__ = ['BaseAlgorithm',
            'Weighting',
            'GreedySelection'
-           'Heuristic3',
+           'SensitiveAlgorithm',
           ]

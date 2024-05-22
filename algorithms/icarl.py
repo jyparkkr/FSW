@@ -1,16 +1,18 @@
-# code imported and modified from https://github.com/XxidroxX/Incremental-Learning-iCarl
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
-from PIL import Image
 
 import copy
 
-from .baselines import BaseContinualAlgoritm
+from .baselines import BaselineContinualAlgoritm
 
-class iCaRL(BaseContinualAlgoritm):
+class iCaRL(BaselineContinualAlgoritm):
+    """
+    Re-implementation of iCaRL: Incremental Classifier and Representation Learning (CVPR 2017)
+    code imported and modified from https://github.com/XxidroxX/Incremental-Learning-iCarl
+    Hyperparameter follows the official code
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         print(f"iCaRL")

@@ -8,7 +8,7 @@ from cl_gym.algorithms import ContinualAlgorithm
 from cl_gym.algorithms.agem import AGEM
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
 from torch.nn.functional import relu, avg_pool2d
-from algorithms.base import Heuristic
+from algorithms.base import BaseAlgorithm
 from algorithms.optimization import absolute_minimax_LP_solver, absolute_minsum_LP_solver, absolute_and_nonabsolute_minsum_LP_solver
 from algorithms.optimization.scipy_solver import absolute_minsum_LP_solver_v3
 
@@ -18,7 +18,10 @@ import time
 import copy
 import os
 
-class Heuristic3(Heuristic):
+class SensitiveAlgorithm(BaseAlgorithm):
+    """
+    FSW algorithm when there is sensitive attribute. (EO, DP)
+    """
     def __init__(self, backbone, benchmark, params, **kwargs):
         super().__init__(backbone, benchmark, params, **kwargs)
         self.absolute_minimax_LP_solver = absolute_minimax_LP_solver
@@ -38,6 +41,14 @@ class Heuristic3(Heuristic):
         return inp.to(device), targ.to(device), task_id.to(device), indices, sample_weight.to(device), sensitive_label.to(device)
 
     def get_loss_grad(self, task_id, loader, current_set = False):
+        """
+        Measure classwise loss, gradients of last layer
+        Return
+            classwise_loss_all: average loss of each class for the given loader
+            classwise_grad_all: average gradient of each class for the given loader 
+            new_grads: gradient of last layer for each datapoint in the given loader
+            loaded_batch: return current loader (include transformation)
+        """
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
         inc_num = self.benchmark.num_classes_per_split # MNIST
@@ -100,6 +111,15 @@ class Heuristic3(Heuristic):
         return classwise_loss_all, classwise_grad_all, new_grads, loaded_batch
 
     def get_loss_grad_all(self, task_id):
+        """
+        Merge get_loss_grad outputs
+        Return
+            loss: merged classwise_loss_all (which is output of get_loss_grad)
+            n_grads_all: normalized new_grads (which is output of get_loss_grad)
+            classwise_grad_all: average gradient of each class for the given loader 
+            new_grads: gradient of last layer for each datapoint in the given loader
+            loaded_batch: return current loader (include transformation)
+        """
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
         classwise_loss_all, classwise_grad_all, *_ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
@@ -136,11 +156,11 @@ class Heuristic3(Heuristic):
             if self.params.get('no_class_grad_norm', False):
                 n_grads_all = grads_all
             else:
-                n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
+                n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias dims)
             if self.params.get('no_datapoints_grad_norm', False):
                 n_r_new_grads = r_new_grads
             else:
-                n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
+                n_r_new_grads = F.normalize(r_new_grads, p=2, dim=1) # (num_candidates) * (weight&bias dims)
 
         return losses, n_grads_all, n_r_new_grads, new_batch
     
@@ -263,15 +283,14 @@ class Heuristic3(Heuristic):
 
     def converter_LP_absolute_only_EO(self, losses, alpha, grads_all, new_grads, task=None):
         """
-        losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
-        only avilable when number of sensitive class is 2
+        Assume linear term to be absolute term
         """
         A, b, C, d = self.converter_LP_absolute_additional_EO(losses, alpha, grads_all, new_grads, task=task)
         return torch.concatenate([A, C], axis=0), torch.concatenate([b, d], axis=0)
 
     def converter_LP_no_losses(self, losses, alpha, grads_all, new_grads, task=None):
         """
-        losses, grads_all의 위의 절반은 s=0, 아래 절반은 s=1임. transpose 후 각각의 difference를 return해야 함.
+        Ignore loss term (same as lambda = 0)
         """
         device = 'cpu'
         losses = torch.transpose(losses, 0, 1)
@@ -300,6 +319,11 @@ class Heuristic3(Heuristic):
         return dg, c
 
     def prepare_train_loader(self, task_id, epoch=0):
+        """
+        Assign solver and corresponding converter (to solver - CPLEX, scipy)
+        Return
+            train_loader
+        """
         solver = self.params.get('solver')
         metric = self.params.get('metric')
         agg = self.params.get('fairness_agg')

@@ -16,15 +16,18 @@ def bool2idx(arr):
             idx.append(i)
     return np.array(idx)
 
-class Heuristic(ContinualAlgorithm):
-    # Implementation is partially based on: https://github.com/MehdiAbbanaBennani/continual-learning-ogdplus
+class BaseAlgorithm(ContinualAlgorithm):
+    """
+    Implementation is partially based on: https://github.com/MehdiAbbanaBennani/continual-learning-ogdplus
+    Basic continual algorithm for FSW
+    """
     def __init__(self, backbone, benchmark, params, **kwargs):
         self.backbone = backbone
         self.benchmark = benchmark
         self.params = params
         self.alpha = self.params['alpha']
         self.weight_all = list()
-        super(Heuristic, self).__init__(backbone, benchmark, params, **kwargs)
+        super(BaseAlgorithm, self).__init__(backbone, benchmark, params, **kwargs)
 
     def get_num_current_classes(self, task):
         if task is None:
@@ -36,16 +39,18 @@ class Heuristic(ContinualAlgorithm):
                 return self.benchmark.num_classes_per_split
 
     def memory_indices_selection(self, task):
-        ## update self.benchmark.memory_indices_train[task] with len self.benchmark.per_task_memory_examples
+        """
+        Update self.benchmark.memory_indices_train[task] with len self.benchmark.per_task_memory_examples
+        Args:
+            task: task number
+        Returns:
+            None
+        """
         indices_train = np.arange(self.per_task_memory_examples)
-        # num_examples = self.benchmark.per_task_memory_examples
-        # indices_train = self.sample_uniform_class_indices(self.trains[task], start_cls, end_cls, num_examples)
-        # # indices_test = self.sample_uniform_class_indices(self.tests[task], start_cls, end_cls, num_examples)
         assert len(indices_train) == self.per_task_memory_examples
         self.benchmark.memory_indices_train[task] = indices_train[:]
 
     def update_episodic_memory(self):
-        # self.memory_indices_selection(self.current_task)
         self.episodic_memory_loader, _ = self.benchmark.load_memory_joint(self.current_task,
                                                                           batch_size=self.params['batch_size_memory'],
                                                                           shuffle=True,
@@ -70,9 +75,6 @@ class Heuristic(ContinualAlgorithm):
         return inp.to(device), targ.to(device), task_id.to(device), _
 
     def training_task_end(self):
-        """
-        Select what to store in the memory in this step
-        """
         print("training_task_end")
         if self.current_task > 1 and (self.alpha > 0 or self.params.get('alpha_debug', False)):
             classwise_mean_grad = torch.stack(self.classwise_mean_grad, dim=1) # num_class * num_epoch
@@ -89,9 +91,6 @@ class Heuristic(ContinualAlgorithm):
             plt.clf()
         self.weight_all.append(self.weight_for_task)
         super().training_task_end()
-        # if self.requires_memory:
-        #     self.update_episodic_memory()
-        # self.current_task += 1
 
     def get_loss_grad(self):
         raise NotImplementedError
@@ -108,11 +107,11 @@ class Heuristic(ContinualAlgorithm):
     def prepare_train_loader(self, task_id, solver=None, epoch=0):
         """
         Compute gradient for memory replay
-        Compute individual sample gradient (against buffer data) for all current data
-            loader로 불러와서 모든 output과 embedding을 저장
-            gradient 계산 (W, b)
-        각 batch별 loss와 std를 가장 낮게 하는 (하나)의 sample만 취해서 학습에 사용
-        Return train loader
+        Args
+            task_id: task id
+            solver: assigned by each algorithm (LP, LS, etc)
+        Return
+            train loader
         """
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         if task_id == 1: # no memory
@@ -230,6 +229,10 @@ class Heuristic(ContinualAlgorithm):
         return train_loader
 
 class WeightModifiedDataset(Dataset):
+    """
+    Temporal class to define dataset
+    To maintain image transformation, assign dataset (with weight) to new dataset class
+    """
     def __init__(self, *args):
         self.arglen = len(args)
         self.args = args

@@ -3,9 +3,7 @@
 CURRENT="$PWD"
 DATASET="BiasedMNIST" #MNIST FashionMNIST BiasedMNIST
 PER_CLASS_EXAMPLE=100000 # np.inf
-TAU=5
-ALPHA=0.002
-LAMBDA=0.01
+
 VERBOSE=2
 METHOD="FSW"
 METRIC="EO"
@@ -16,31 +14,11 @@ for SEED in 10; do
 for EPOCH in 2; do
 for TAU in 1.0 5.0 10.0; do
 for LR in 0.01 0.001; do
-for ALPHA in 0.0005 0.001 0.002 0.005 0.01 0.02; do
-for LAMBDA in 1.0 5.0 10.0; do
-    if [[ $DATASET == "MNIST" ]]; then
+for ALPHA in 0.0005 0.001 0.002 0.005 0.01; do
+for LAMBDA in 0.1 0.5 1.0 5.0 10.0; do
+    if [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
-        PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=32
-    elif [[ $DATASET == "FashionMNIST" ]]; then
-        MODEL="MLP"
-        NUM_TASK=5
-        PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=32
-    elif [[ $DATASET == "BiasedMNIST" ]]; then
-        MODEL="MLP"
-        NUM_TASK=5
-        PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=32
-    elif [[ $DATASET == "CIFAR10" ]]; then
-        ROOT="resnet18"
-        NUM_TASK=5
-        PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=32
-    else
-        ROOT="resnet18"
-        NUM_TASK=10
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
     fi
@@ -66,7 +44,7 @@ for LAMBDA in 1.0 5.0 10.0; do
     sleep 1
     echo "Task Start"  > /dev/stdout
     mkdir -p $OUT_FOLDER
-    ~/anaconda3/envs/cil/bin/python run.py \
+    ~/anaconda3/envs/fsw/bin/python run.py \
                            --dataset $DATASET \
                            --model $MODEL \
                            --method $METHOD \

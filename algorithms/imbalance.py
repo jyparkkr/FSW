@@ -1,23 +1,28 @@
 import torch
 import numpy as np
 
-from torch import nn
-from torch import optim
 from torch.nn import functional as F
-from cl_gym.algorithms import ContinualAlgorithm
 from cl_gym.algorithms.utils import flatten_grads, assign_grads
-from torch.nn.functional import relu, avg_pool2d
-import matplotlib.pyplot as plt
-import time
 
-from algorithms.base import Heuristic
+from algorithms.base import BaseAlgorithm
 from algorithms.optimization import LS_solver, absolute_minsum_LP_solver, absolute_and_nonabsolute_minsum_LP_solver
 
 import copy
 import os
 
-class Heuristic2(Heuristic):
+class ImbalanceAlgorithm(BaseAlgorithm):
+    """
+    FSW algorithm when there is sensitive attribute. (EO, DP)
+    """
     def get_loss_grad(self, task_id, loader, current_set = False):
+        """
+        Measure classwise loss, gradients of last layer
+        Return
+            classwise_loss_all: average loss of each class for the given loader
+            classwise_grad_all: average gradient of each class for the given loader 
+            new_grads: gradient of last layer for each datapoint in the given loader
+            loaded_batch: return current loader (include transformation)
+        """
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
         inc_num = self.benchmark.num_classes_per_split # MNIST
@@ -61,6 +66,15 @@ class Heuristic2(Heuristic):
         return classwise_loss, classwise_grad, new_grads, loaded_batch
     
     def get_loss_grad_all(self, task_id):
+        """
+        Merge get_loss_grad outputs
+        Return
+            loss: merged classwise_loss_all (which is output of get_loss_grad)
+            n_grads_all: normalized new_grads (which is output of get_loss_grad)
+            classwise_grad_all: average gradient of each class for the given loader 
+            new_grads: gradient of last layer for each datapoint in the given loader
+            loaded_batch: return current loader (include transformation)
+        """
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
 
         classwise_loss, classwise_grad, *_ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
@@ -74,8 +88,6 @@ class Heuristic2(Heuristic):
         grads = []
         for k, v in classwise_loss.items():
             v3 = classwise_grad[k]
-            # loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
-            # grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
             loss_ = torch.stack(v).mean(dim=0).view(1, -1)
             grads_ = torch.stack(v3).mean(dim=0).view(1, -1)
             losses.append(loss_)
@@ -86,15 +98,15 @@ class Heuristic2(Heuristic):
             grads_all = torch.cat(grads, dim=0)
             self.classwise_mean_grad.append(torch.norm(grads_all, dim=1))
             
-            # class/group별로 변화량이 비슷하도록 normalize
+            # normalize to make class/group difference be similar
             if self.params.get('no_class_grad_norm', False):
                 n_grads_all = grads_all
             else:
-                n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
+                n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias dims)
             if self.params.get('no_datapoints_grad_norm', False):
                 n_new_grads = new_grads
             else:
-                n_new_grads = F.normalize(new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
+                n_new_grads = F.normalize(new_grads, p=2, dim=1) # (num_candidates) * (weight&bias dims)
 
         return losses, n_grads_all, n_new_grads, new_batch
 
@@ -105,7 +117,6 @@ class Heuristic2(Heuristic):
         where A, b are coefficient
         min_x (Ax - b)^2
         """
-
         losses = torch.transpose(losses, 0, 1)
         grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
         
@@ -181,28 +192,18 @@ class Heuristic2(Heuristic):
         return dg, c, ldg, lc
 
     def converter_LP_absolute_only(self, losses, alpha, grads_all, new_grads, task=None):
+        """
+        Assume linear term to be absolute term
+        """
         A, b, C, d = self.converter_LP_absolute_additional(losses, alpha, grads_all, new_grads, task=task)
         return torch.concatenate([A, C], axis=0), torch.concatenate([b, d], axis=0)
 
-    # def prepare_train_loader(self, task_id, epoch=0):
-    #     solver = self.params.get('solver')
-    #     if (solver is None) or ("absolute_and_nonabsolute" in solver and "LP" in solver):
-    #         solver = absolute_and_nonabsolute_minsum_LP_solver
-    #         self.converter = self.converter_LP_absolute_additional
-    #     elif "absolute" in solver and "LP" in solver:
-    #         solver = absolute_minsum_LP_solver
-    #         self.converter = self.converter_LP_absolute_only
-    #     elif "LS" in solver:
-    #         solver = LS_solver
-    #         self.converter = self.converter_LS
-    #     else:
-    #         raise NotImplementedError
-
-    #     # print(f"{solver=}")
-    #     # print(f"{self.converter=}")
-    #     return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
-
     def prepare_train_loader(self, task_id, epoch=0):
+        """
+        Assign solver and corresponding converter (to solver - CPLEX, scipy)
+        Return
+            train_loader
+        """
         solver = self.params.get('solver')
         metric = self.params.get('metric')
         agg = self.params.get('fairness_agg')
@@ -220,22 +221,6 @@ class Heuristic2(Heuristic):
         else:
             solver = getattr(self, solver)
             self.converter = getattr(self, self.params.get('converter'))    
-
-
-    #     if (solver is None) or ("absolute_and_nonabsolute" in solver and "LP" in solver):
-    #         solver = absolute_and_nonabsolute_minsum_LP_solver
-    #         self.converter = self.converter_LP_absolute_additional
-    #     elif "absolute" in solver and "LP" in solver:
-    #         solver = absolute_minsum_LP_solver
-    #         self.converter = self.converter_LP_absolute_only
-    #     elif "LS" in solver:
-    #         solver = LS_solver
-    #         self.converter = self.converter_LS
-    #     else:
-    #         raise NotImplementedError
-
-        # print(f"{solver=}")
-        # print(f"{self.converter=}")
         return super().prepare_train_loader(task_id, solver=solver, epoch=epoch)
 
     def training_step(self, task_ids, inp, targ, optimizer, criterion, sample_weight=None, sensitive_label=None):

@@ -2,8 +2,6 @@ import torch
 import numpy as np
 import torch.nn as nn
 from torch.nn.functional import relu, avg_pool2d
-import random
-import cl_gym
 from typing import Optional, Dict, Iterable
 
 from cl_gym.backbones.resnet import ResNet as ResNet_clgym, BasicBlock as BasicBlock_clgym, conv3x3, BN_AFFINE, BN_MOMENTUM
