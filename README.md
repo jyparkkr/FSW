@@ -28,8 +28,8 @@ $ bash scripts/script_BiasedMNIST.sh
 ```
 $ bash scripts/script_Drug.sh
 ```
-### License for Optimization Solver
-Both MOSEK and CPLEX optimization packages are free for students and academics. Installing these solvers is straightforward, as you can simply follow the provided guidelines for each package.
+## License for Optimization Solver
+Both MOSEK and CPLEX optimization solvers are free for students and academics. Installing these solvers is straightforward, as you can simply follow the provided guidelines for each package.
 ```python
 # MOSEK
 https://www.mosek.com/products/academic-licenses/
