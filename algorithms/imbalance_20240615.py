@@ -49,7 +49,7 @@ class Heuristic2(Heuristic):
                 """
                 This requires gradient to be matmul every batch.
                 Otherwise needed memory would be larger
-
+                
                 """
                 batch_size = inp.shape[0]
                 grads = list()
@@ -97,7 +97,6 @@ class Heuristic2(Heuristic):
         losses = []
         grads = []
         for k, v in classwise_loss.items():
-            print(f"{k=}")
             v3 = classwise_grad[k]
             # loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
             # grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()

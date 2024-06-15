@@ -64,6 +64,8 @@ def parse_option():
                         help='Hyperparameter of loss for sample selection problem.')
     parser.add_argument('--lambda_old', type=float, default=0.0,
                         help='Hyperparameter of old class loss for sample selection problem.')
+    parser.add_argument('--all_layer_gradient', action='store_true',
+                        help='use gradient of all layers (only use last layer if false)')
     
     # etc
     parser.add_argument('--cuda', type=int, default=0,
@@ -90,8 +92,10 @@ def make_params(args) -> dict:
     params = dict()
     for arg in vars(args):
         params[arg] = getattr(args, arg)
-
-    params['device'] = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
+    if args.cuda >= 0:
+        params['device'] = torch.device(f'cuda:{args.cuda}' if torch.cuda.is_available() else 'cpu')
+    else:
+        params['device'] = torch.device('cpu')
     params['criterion'] = torch.nn.CrossEntropyLoss()
     if params['method'] == "iCaRL":
         params['criterion'] = torch.nn.BCEWithLogitsLoss()
@@ -108,6 +112,8 @@ def make_params(args) -> dict:
     elif params['method'] == 'finetune':
         params['tau'] == 0
     trial_id = os.path.join(trial_id, f"{params['method']}")
+    if params['all_layer_gradient']:
+        trial_id+="_ALLGRAD"
 
     epoch = params['epochs_per_task']
     if epoch <= 50:
