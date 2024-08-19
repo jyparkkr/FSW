@@ -6,6 +6,7 @@ import torch
 import numpy as np
 from typing import Dict, Iterable, Optional
 import cl_gym as cl
+import time
 
 get_avg = lambda cor_count: np.mean([cor/count for cor, count in cor_count.values()])
 avg_ = lambda cor_count: cor_count[0]/cor_count[1]
@@ -17,6 +18,7 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
                  callbacks=Iterable[ContinualCallback],
                  logger: Optional[Logger] = None):
         super().__init__(algorithm, params, callbacks, logger)
+        self.post_processing = params.get("post_processing", False)
 
     def on_before_training_task(self):
         super().on_before_training_task()
@@ -33,6 +35,7 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
         optimizer = self.algorithm.prepare_optimizer(task)
         criterion = self.algorithm.prepare_criterion(task)
         device = self.params['device']
+        train_start_time = time.time()
         for epoch in range(1, self.params['epochs_per_task']+1):
             self.on_before_training_epoch()
             self.tick('epoch')
@@ -52,6 +55,9 @@ class ContinualTrainer1(cl.trainer.ContinualTrainer):
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()
             self.on_after_training_epoch()
+            train_end_time = time.time()
+            self.algorithm.overall_training_time[task][epoch] = train_end_time - train_start_time
+
         self.algorithm.training_task_end()
 
     def validate_algorithm_on_task(self, task: int, validate_on_train: bool = False) -> Dict[str, float]:

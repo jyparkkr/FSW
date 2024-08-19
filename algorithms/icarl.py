@@ -193,6 +193,28 @@ class iCaRL(BaseContinualAlgoritm):
             result.append(y)
         return torch.tensor(result).to(self.device)
 
+    def prototype_classifier_prob(self, images):
+        # batch_sizex3x32x32
+
+        result = []
+        self.backbone.eval()
+        with torch.no_grad():
+            phi_X = F.normalize(self.backbone.forward_embeds(images)[1])
+
+        # 10x64 (di ogni classe mi salvo la media di ogni features)
+        for x in phi_X:
+            dists = np.zeros(len(self.class_mean_dict))
+            dists.fill(10e9)
+            for cls in self.class_mean_dict:
+                if self.class_mean_dict[cls] is not None:
+                    dists[cls] = (self.class_mean_dict[cls] - x).norm()
+            result.append(dists)
+        dists = np.array(result)
+        inv_dists = np.reciprocal(dists)
+        sum_dists = np.sum(inv_dists, axis=1).reshape(-1, 1).repeat(inv_dists.shape[1], axis=1)
+        prob = inv_dists / sum_dists
+        return torch.tensor(prob).to(self.device)
+
     def _reduce_exemplar_dict(self, images_per_class):
         for cls in self.exemplar_dict:
             self.exemplar_dict[cls] = self.exemplar_dict[cls][:images_per_class]

@@ -17,9 +17,11 @@ class MNIST(SplitMNIST):
                  task_input_transforms: Optional[list] = None,
                  task_target_transforms: Optional[list] = None,
                  joint=False,
-                 random_class_idx=False):
+                 random_class_idx=False,
+                 augment = 1):
         self.num_classes_per_split = 2
         self.joint = joint
+        self.augment = augment
         cls = np.arange(10)
         if random_class_idx:
             self.class_idx = np.random.choice(cls, len(cls), replace=False)
@@ -40,7 +42,7 @@ class MNIST(SplitMNIST):
             train_task = task
             if self.joint:
                 train_task = [t for t in range(1, task+1)]
-            self.trains[task] = SplitDataset2(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            self.trains[task] = SplitDataset2(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx, augment=self.augment)
             self.tests[task] = SplitDataset2(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def update_sample_weight(self, task, sample_weight, idx = None):
@@ -88,5 +90,5 @@ class MNIST(SplitMNIST):
         for task in range(1, self.num_tasks+1):
             # self.seq_indices_train[task] = randint(0, len(self.trains[task]), size=self.per_task_seq_examples)
             # self.seq_indices_test[task] = randint(0, len(self.tests[task]), size=min(self.per_task_seq_examples, len(self.tests[task])))
-            self.seq_indices_train[task] = sorted(np.random.choice(len(self.trains[task]), size=min(self.per_task_seq_examples, len(self.trains[task])), replace=False).tolist())
-            self.seq_indices_test[task] = sorted(np.random.choice(len(self.tests[task]), size=min(self.per_task_seq_examples, len(self.tests[task])), replace=False).tolist())
+            self.seq_indices_train[task] = sorted(np.random.choice(len(self.trains[task]), size=min(self.per_task_seq_examples*self.augment, len(self.trains[task])), replace=False).tolist())
+            self.seq_indices_test[task] = sorted(np.random.choice(len(self.tests[task]), size=min(self.per_task_seq_examples*self.augment, len(self.tests[task])), replace=False).tolist())

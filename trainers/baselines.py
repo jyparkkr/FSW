@@ -17,6 +17,7 @@ class BaseContinualTrainer(cl.trainer.ContinualTrainer):
                  callbacks=Iterable[ContinualCallback],
                  logger: Optional[Logger] = None):
         super().__init__(algorithm, params, callbacks, logger)
+        self.post_processing = params.get("post_processing", False)
 
     def on_before_training_task(self):
         super().on_before_training_task()
@@ -77,24 +78,69 @@ class BaseContinualTrainer(cl.trainer.ContinualTrainer):
         else:
             eval_loader = self.algorithm.prepare_validation_loader(task)
         criterion = self.algorithm.prepare_criterion(task)
+
+        if self.post_processing:
+            train_loader, _ = self.algorithm.benchmark.load(task, 256, shuffle=False)
+            with torch.no_grad():
+                X_train, targets, sens, probs = list(), list(), list(), list()
+                for items in train_loader:
+                    item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                    # TODO: CIFAR이상 dataset에 대해서는 test_transform을 적용해주어야 함
+                    inp, targ, task_ids, _, _, sensitive_label, *_ = item_to_devices
+                    if self.algorithm.benchmark.__class__.__name__ == "BiasedMNIST":
+                        sensitive_label = process_for_biasedmnist(sensitive_label, targ)
+
+                    if criterion._get_name() != "BCEWithLogitsLoss":
+                        prob = self.algorithm.backbone(inp)
+
+                    elif criterion._get_name() == "BCEWithLogitsLoss":
+                        prob = self.algorithm.prototype_classifier_prob(inp)
+                    
+                    X_train.append(inp.reshape(inp.shape[0], -1))
+                    targets.append(targ)
+                    sens.append(sensitive_label)
+                    probs.append(prob)
+            
+            X_train = torch.concat(X_train).to("cpu").numpy()
+            targets = torch.concat(targets).to("cpu").numpy()
+            sens_train = torch.concat(sens).to("cpu").numpy()
+            probs_train = torch.concat(probs).to("cpu").numpy()
+
         with torch.no_grad():
             for items in eval_loader:
                 item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
                 inp, targ, task_ids, _, _, sensitive_label, *_ = item_to_devices
                 if criterion._get_name() != "BCEWithLogitsLoss":
-                    pred = self.algorithm.backbone(inp)
+                    prob = self.algorithm.backbone(inp)
                     total += len(targ)
-                    test_loss += criterion(pred, targ).item()
-                    pred = pred.data.max(1, keepdim=True)[1]
+                    test_loss += criterion(prob, targ).item()
+                    pred = prob.data.max(1, keepdim=True)[1]
                     same = pred.eq(targ.data.view_as(pred))
 
                 elif criterion._get_name() == "BCEWithLogitsLoss":
                     pred = self.algorithm.prototype_classifier(inp)
+                    prob = self.algorithm.prototype_classifier_prob(inp)
+
                     total += len(targ)
                     same = pred.eq(targ.data.view_as(pred))
 
                 if self.algorithm.benchmark.__class__.__name__ == "BiasedMNIST":
                     sensitive_label = process_for_biasedmnist(sensitive_label, targ)
+
+                if self.post_processing:
+                    # print(f"{self.post_processing=}")
+                    X_test = inp.reshape(inp.shape[0], -1).to("cpu").numpy()
+                    prob_test = prob.to("cpu").numpy()
+                    sen_test = sensitive_label.to("cpu").numpy()
+
+                    if self.post_processing == "eps_fairness":
+                        # n_classes = task * self.algorithm.benchmark.num_classes_per_split
+                        n_classes = len(self.algorithm.benchmark.class_idx)
+                        from algorithms.postprocessing.epsilon_fairness.multiclass_fairness import run_fairness_experimentation
+                        eps = self.params.get('pp_eps', None)
+                        pred_pp = run_fairness_experimentation(None, X_test, epsilon_fair=eps, Xtrain=X_train, prob_train=probs_train, \
+                                                            sen_train=sens_train, prob=prob_test, sen=sen_test, n_classes=n_classes)
+                        pred = torch.from_numpy(pred_pp).view_as(pred)
 
                 for p, t, s, sen in zip(pred, targ, same, sensitive_label):
                     p = p.cpu().item()
@@ -163,8 +209,7 @@ class BaseMemoryContinualTrainer(BaseContinualTrainer):
                 if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
                     for g in optimizer.param_groups:
                         g['lr'] = g['lr'] / 10
-                self.algorithm.training_step(task_ids, inp, targ, \
-                                             indices, optimizer, criterion)
+                self.algorithm.training_step(task_ids, inp, targ, indices, optimizer, criterion)
                 self.algorithm.training_step_end()
                 self.on_after_training_step()
             self.algorithm.training_epoch_end()

@@ -81,6 +81,8 @@ class Heuristic3(Heuristic):
             grads = grads.cpu()
 
             for i, e in enumerate(targ):
+                if not current_set and e >= (task_id-1)*inc_num:
+                    continue
                 if sensitive[i].cpu().item() == 0:
                     classwise_loss_s0[e.cpu().item()].append(loss[i].detach().cpu())
                     classwise_grad_s0[e.cpu().item()].append(grads[i].detach().cpu())
@@ -144,6 +146,105 @@ class Heuristic3(Heuristic):
 
         return losses, n_grads_all, n_r_new_grads, new_batch
     
+
+    def get_loss_grad_model(self, task_id, loader, current_set = False, model=None):
+        criterion = self.prepare_criterion(task_id)
+        device = self.params['device']
+        inc_num = self.benchmark.num_classes_per_split # MNIST
+        if current_set:
+            classwise_loss_s0 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_grad_s0 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_loss_s1 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_grad_s1 = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+        else:
+            classwise_loss_s0 = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_grad_s0 = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_loss_s1 = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_grad_s1 = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+        # sensitive_loss = {x:list() for x in range(2)}
+        # sensitive_grad_dict = {x:list() for x in range(2)}
+        new_grads, grads = None, None
+
+        loaded_batch = list()
+        for batch_idx, items in enumerate(loader):
+            inp, targ, t_id, indices, sample_weight, sensitive_label, *_ = items
+            if current_set:
+                loaded_batch.append(items)
+            # self.backbone.forward
+            inp, targ, t_id, sensitive_label  = inp.to(device), targ.to(device), t_id.to(device), sensitive_label.to(device)
+            pred, embeds = model.forward_embeds(inp, t_id)
+            self.pred_shape = pred.shape[1]
+            self.embeds_shape = embeds.shape[1]
+            criterion.reduction = "none"
+            loss = criterion(pred, targ.reshape(-1))
+            criterion.reduction = "mean"
+            
+            bias_grads = torch.autograd.grad(loss.mean(), pred)[0]
+            bias_expand = torch.repeat_interleave(bias_grads, embeds.shape[1], dim=1)
+            weight_grads = bias_expand * embeds.repeat(1, pred.shape[1])
+            grads = torch.cat([bias_grads, weight_grads], dim=1)
+            if self.params['dataset'] == "BiasedMNIST":
+                sensitive = torch.ne(targ, sensitive_label)
+            else:
+                sensitive = sensitive_label
+            sensitive = sensitive.long()
+            grads = grads.cpu()
+
+            for i, e in enumerate(targ):
+                if not current_set and e >= (task_id-1)*inc_num:
+                    continue
+                if sensitive[i].cpu().item() == 0:
+                    classwise_loss_s0[e.cpu().item()].append(loss[i].detach().cpu())
+                    classwise_grad_s0[e.cpu().item()].append(grads[i].detach().cpu())
+                elif sensitive[i].cpu().item() == 1:
+                    classwise_loss_s1[e.cpu().item()].append(loss[i].detach().cpu())
+                    classwise_grad_s1[e.cpu().item()].append(grads[i].detach().cpu())
+                else:
+                    raise NotImplementedError
+
+            if current_set:
+                new_grads = grads if new_grads is None else torch.cat([new_grads, grads])
+
+            model.zero_grad()
+
+        classwise_loss_all = [classwise_loss_s0, classwise_loss_s1]
+        classwise_grad_all = [classwise_grad_s0, classwise_grad_s1]
+        return classwise_loss_all, classwise_grad_all, new_grads, loaded_batch
+
+
+    def measure_loss(self, task_id, model):
+        num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
+
+        classwise_loss_all, classwise_grad_all, *_ = self.get_loss_grad_model(task_id, self.episodic_memory_loader, model=model, current_set = False)
+        train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=False,
+                                   num_workers=num_workers, pin_memory=True)[0]
+        current_loss_all, current_grad_all, new_grads, new_batch = self.get_loss_grad_model(task_id, train_loader, model=model, current_set = True)
+        r_new_grads = new_grads[self.non_select_indexes]
+
+        classwise_loss_all[0].update(current_loss_all[0])
+        classwise_loss_all[1].update(current_loss_all[1])
+        classwise_grad_all[0].update(current_grad_all[0])
+        classwise_grad_all[1].update(current_grad_all[1])
+
+        losses = []
+        grads = []
+        for i, classwise_loss in enumerate(classwise_loss_all):
+            for k, v in classwise_loss.items():
+                v3 = classwise_grad_all[i][k]
+                if len(v) == 0 :
+                    print(f"###classwise_loss of {k}, s={i} is missing###")
+                    raise NotImplementedError
+
+                loss_ = torch.stack(v).mean(dim=0).view(1, -1)
+                grads_ = torch.stack(v3).mean(dim=0).view(1, -1)
+                losses.append(loss_)
+                grads.append(grads_)
+
+        with torch.no_grad():
+            losses = torch.cat(losses, dim=0).view(1,-1)
+        return losses
+
+
     def converter_LP_absolute_additional_EO(self, losses, alpha, grads_all, new_grads, task=None):
         """
         LP with linear additional term

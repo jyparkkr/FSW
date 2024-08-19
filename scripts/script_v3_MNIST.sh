@@ -1,54 +1,46 @@
 #!/bin/bash
 
 CURRENT="$PWD"
-DATASET="CIFAR10" #MNIST FashionMNIST BiasedMNIST
+DATASET="MNIST" #MNIST FashionMNIST BiasedMNIST
 PER_CLASS_EXAMPLE=100000 # np.inf
 TAU=5
 ALPHA=0.002
 LAMBDA=0.01
 VERBOSE=2
-METHOD="joint"
+METHOD="FSW"
+METRIC="EER"
 
 cnt=0
-for SEED in {0..4}; do
-# for SEED in 10; do
-for EPOCH in 50; do
-for TAU in 0.0; do
-for LR in 0.1 0.01 0.001; do
-for ALPHA in 0.0; do
-for LAMBDA in 0.0; do
+# for SEED in {0..4}; do
+for SEED in 10; do
+for EPOCH in 5; do
+for TAU in 10.0; do
+for LR in 0.001; do
+for ALPHA in 0.001; do
+for LAMBDA in 1.0; do
+for PER_CLASS_EXAMPLE in 6000; do
     if [[ $DATASET == "MNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
-        METRIC="no_metrics"
     elif [[ $DATASET == "FashionMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=32
-        METRIC="no_metrics"
     elif [[ $DATASET == "BiasedMNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=64
-        METRIC="no_metrics"
-    elif [[ $DATASET == "CIFAR10" ]]; then
-        MODEL="resnet18"
-        NUM_TASK=5
-        PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=256
-        METRIC="no_metrics"
+        BUFFER_PER_CLASS=32
     else
         ROOT="resnet18"
         NUM_TASK=10
         PER_TASK_CLASS=2
         BUFFER_PER_CLASS=64
-        METRIC="std"
     fi
-    
+
     EXP_DUMP="dataset=${DATASET}/${METHOD}/${METRIC}"
     EXP_DUMP="${EXP_DUMP}/seed=${SEED}_epoch=${EPOCH}_lr=${LR}_tau=${TAU}"
     if [[ $ALPHA != 0.0 ]]; then
@@ -61,7 +53,7 @@ for LAMBDA in 0.0; do
     echo "EXP_DUMP:"
     echo "$EXP_DUMP" > /dev/stdout
 
-    OUT_FOLDER="scripts_output/${EXP_DUMP}"
+    OUT_FOLDER="scripts_output_rebuttal/${EXP_DUMP}"
     LOG_STDOUT="${OUT_FOLDER}/log.out"
     LOG_STDERR="${OUT_FOLDER}/log.err"
 
@@ -71,6 +63,7 @@ for LAMBDA in 0.0; do
     echo "Task Start"  > /dev/stdout
     mkdir -p $OUT_FOLDER
     ~/anaconda3/envs/cil/bin/python run.py \
+                           --rebuttal \
                            --dataset $DATASET \
                            --model $MODEL \
                            --method $METHOD \
@@ -79,8 +72,8 @@ for LAMBDA in 0.0; do
                            --epochs_per_task $EPOCH \
                            --per_task_examples $(($PER_CLASS_EXAMPLE * $PER_TASK_CLASS)) \
                            --per_task_memory_examples $(($BUFFER_PER_CLASS * $PER_TASK_CLASS)) \
-                           --batch_size_train 256 \
-                           --batch_size_memory 256 \
+                           --batch_size_train 64 \
+                           --batch_size_memory 64 \
                            --batch_size_validation 256 \
                            --tau $TAU \
                            --optimizer sgd \
@@ -95,6 +88,7 @@ for LAMBDA in 0.0; do
                            --cuda 7 \
                            --verbose $VERBOSE \
                         #    1> $LOG_STDOUT 2> $LOG_STDERR
+done
 done
 done
 done

@@ -11,10 +11,11 @@ def tranform_on_idx(data, idx, transform):
     return data
 
 class SplitDataset1(SplitDataset):
-    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
+    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None, augment = 1):
         self.task_id = task_id
         self.num_classes_per_split = num_classes_per_split
         self.dataset = dataset
+        self.augment = augment
         if isinstance(dataset.targets, np.ndarray):
             original_target = dataset.targets
         elif isinstance(dataset.targets, list):
@@ -47,6 +48,8 @@ class SplitDataset1(SplitDataset):
         self.targets = self.original_target[self.true_index]
 
     def __getitem__(self, index: int):
+        true_len = len(self.true_index)
+        index %= true_len
         idx = self.true_index[index]
         img, target, *_ = self.dataset[idx]
         target_ = target if not isinstance(target, torch.Tensor) else target.item()
@@ -90,7 +93,8 @@ class SplitDataset1(SplitDataset):
         return img_list, target_list
 
     def __len__(self):
-        return len(self.true_index)
+        # return len(self.true_index)
+        return int(np.floor(len(self.true_index)*self.augment))
 
     def __clear_dataset(self):
         original_shape = self.dataset.data.shape
@@ -137,8 +141,8 @@ class SplitDataset2(SplitDataset1): # For EER datasets
         return img, target, task_id, index, sample_weight, target # target as sensitive attribute
 
 class SplitDataset3(SplitDataset1): # For EO, DP datasets
-    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None):
-        super().__init__(task_id, num_classes_per_split, dataset, class_idx = class_idx)
+    def __init__(self, task_id, num_classes_per_split, dataset, class_idx = None, augment = 1):
+        super().__init__(task_id, num_classes_per_split, dataset, class_idx = class_idx, augment=augment)
 
     def build_split(self, task_id):
         super().build_split(task_id)
@@ -151,6 +155,8 @@ class SplitDataset3(SplitDataset1): # For EO, DP datasets
 
 class SplitDataset4(SplitDataset3): # For BiasedMNIST
     def __getitem__(self, index: int):
+        true_len = len(self.true_index)
+        index %= true_len
         idx = self.true_index[index]
         img = self.dataset.data[idx]
         target = int(self.dataset.targets[idx])

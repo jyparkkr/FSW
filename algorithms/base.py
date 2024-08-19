@@ -24,7 +24,25 @@ class Heuristic(ContinualAlgorithm):
         self.params = params
         self.alpha = self.params['alpha']
         self.weight_all = list()
+        self.optim_time = dict()
+        self.etc_prepare_time = dict()
+        self.grad_calculation_time = dict()
+        self.overall_training_time = dict()
+        self.true_loss = dict()
+        self.expected_loss = dict()
+        self.debug = False
         super(Heuristic, self).__init__(backbone, benchmark, params, **kwargs)
+
+    def before_training_epoch(self):
+        if hasattr(super(), "before_training_task"):
+            super().before_training_task()
+        self.training_start_time = time.time()
+
+    def training_epoch_end(self):
+        training_time = time.time() - self.training_start_time
+        self.overall_training_time[self.current_task].append(training_time)
+        return super().training_epoch_end()
+
 
     def get_num_current_classes(self, task):
         if task is None:
@@ -57,6 +75,12 @@ class Heuristic(ContinualAlgorithm):
             super().before_training_task()
         self.weight_for_task = list()
         self.classwise_mean_grad = list()
+        self.optim_time[self.current_task] = dict()
+        self.etc_prepare_time[self.current_task] = dict()
+        self.grad_calculation_time[self.current_task] = dict()
+        self.overall_training_time[self.current_task] = list()
+        self.true_loss[self.current_task] = dict()
+        self.expected_loss[self.current_task] = dict()
 
     def sample_batch_from_memory(self):
         try:
@@ -99,6 +123,9 @@ class Heuristic(ContinualAlgorithm):
     def get_loss_grad_all(self):
         raise NotImplementedError
 
+    def measure_loss(self):
+        raise NotImplementedError
+
     def converter(self):
         raise NotImplementedError
 
@@ -114,6 +141,7 @@ class Heuristic(ContinualAlgorithm):
         각 batch별 loss와 std를 가장 낮게 하는 (하나)의 sample만 취해서 학습에 사용
         Return train loader
         """
+        prepare_start_time = time.time()
         num_workers = self.params.get('num_dataloader_workers', torch.get_num_threads())
         if task_id == 1: # no memory
             return self.benchmark.load(task_id, self.params['batch_size_train'],
@@ -131,12 +159,11 @@ class Heuristic(ContinualAlgorithm):
             self.benchmark.seq_indices_train[task_id] = copy.deepcopy(self.original_seq_indices_train)
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
-        i = time.time()
+        grad_start_time = time.time()
         losses, n_grads_all, n_r_new_grads, new_batch = self.get_loss_grad_all(task_id) 
-        print(f"Elapsed time(grad):{np.round(time.time()-i, 3)}")
 
         # n_grads_all: (class_num) * (weight&bias 차원수)
-        # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수)
+        # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수) \ all_layer_gradient 일경우 configs
         if self.alpha == 0:
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
@@ -146,8 +173,11 @@ class Heuristic(ContinualAlgorithm):
         
         if self.params.get('alpha_decay', False) and epoch in self.params.get('learning_rate_decay_epoch', []): # decay
             self.alpha = self.alpha / 10
-
-        converter_out = self.converter(losses, self.alpha, n_grads_all, n_r_new_grads, task=task_id)
+        if not self.params.get('all_layer_gradient', False) or self.params.get('old', False):
+            converter_out = self.converter(losses, self.alpha, n_grads_all, n_r_new_grads, task=task_id)
+        else:
+            configs = n_r_new_grads
+            converter_out = self.converter_LP_lower(configs, losses, self.alpha, task=task_id)
         optim_in = list()
         for i, e in enumerate(converter_out):
             if i % 2 == 0:
@@ -155,14 +185,28 @@ class Heuristic(ContinualAlgorithm):
             else:
                 e_np = e.view(-1).cpu().detach().numpy().astype('float64')
             optim_in.append(e_np)
+        gradient_calculation_time = time.time()
+        grad_time = gradient_calculation_time - grad_start_time
+        print(f"Elapsed time(grad):{np.round(grad_time, 3)}")
+        self.grad_calculation_time[self.current_task][epoch] = grad_time        
 
-        i = time.time()
+
         weight = solver(*optim_in)
-        
-        print(f"Elapsed time(optim):{np.round(time.time()-i, 3)}")
+        solver_calculation_time = time.time()
+        solver_time = solver_calculation_time - gradient_calculation_time
+        print(f"Elapsed time(optim):{np.round(solver_time, 3)}")
+        self.optim_time[self.current_task][epoch] = solver_time        
+
         print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
-        if len(optim_in) >= 4:
-            print(f"Current class expected loss:{np.matmul(optim_in[2], weight)-optim_in[3]}")
+        if self.debug:
+            group_loss = losses # (group_num)
+            group_grad = n_grads_all # (group_num) * (weight&bias 차원수)
+            data_grad = n_r_new_grads.T # (weight&bias 차원수) * (current step data 후보수)
+            weight_torch = torch.Tensor(weight)
+            expected_loss = group_loss - self.alpha * torch.matmul(group_grad, torch.matmul(data_grad, weight_torch))
+            self.expected_loss[self.current_task][epoch] = expected_loss
+            # self.true_loss[self.current_task][epoch-1] = losses
+            print(f"Current class expected loss:{expected_loss}")
 
         tensor_weight = torch.tensor(np.array(weight), dtype=torch.float32)
 
@@ -227,6 +271,41 @@ class Heuristic(ContinualAlgorithm):
         dataset  = WeightModifiedDataset(*args)
         train_loader = DataLoader(dataset, self.params['batch_size_train'], True, num_workers=num_workers,
                                   pin_memory=True)
+        prepare_end_time = time.time()
+        etc_prepare_time = prepare_end_time - solver_calculation_time + grad_start_time - prepare_start_time
+        print(f"Elapsed time(etc):{np.round(etc_prepare_time, 3)}")
+        self.etc_prepare_time[self.current_task][epoch] = etc_prepare_time
+
+        if self.debug:
+            print("temporal training...")
+            criterion = torch.nn.CrossEntropyLoss()
+            device = self.params['device']
+            dummy_backbone = copy.deepcopy(self.backbone).to(device)
+            dummy_loader = copy.deepcopy(train_loader)
+            optimizer = torch.optim.SGD(dummy_backbone.parameters(), lr=self.params['learning_rate'])
+            dummy_loader.shuffle=False
+            dummy_backbone.train()
+            for batch_idx, items in enumerate(dummy_loader):
+                item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
+                inp, targ, task_ids, _, sample_weight, *_ = item_to_devices
+                if epoch in self.params.get('learning_rate_decay_epoch', []): # decay
+                    for g in optimizer.param_groups:
+                        g['lr'] = g['lr'] / 10
+                optimizer.zero_grad()
+                pred = dummy_backbone(inp, task_ids)
+                criterion.reduction = "none"
+                loss = criterion(pred, targ)
+                criterion.reduction = "mean"
+                if sample_weight is not None:
+                    loss = loss*sample_weight
+                loss = loss.mean()
+                loss.backward()
+                optimizer.step()
+            # training done
+            losses = self.measure_loss(task_id, dummy_backbone) 
+            self.true_loss[self.current_task][epoch] = losses
+            print("temporal training done")
+
         return train_loader
 
 class WeightModifiedDataset(Dataset):

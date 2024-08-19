@@ -17,17 +17,26 @@ import copy
 import os
 
 class Heuristic2(Heuristic):
-    def get_loss_grad(self, task_id, loader, current_set = False):
+    def get_loss_grad(self, task_id, loader, current_set = False, return_grad=False, configs=None):
         criterion = self.prepare_criterion(task_id)
         device = self.params['device']
         inc_num = self.benchmark.num_classes_per_split # MNIST
+        params_dim = 0
+        for name, params in self.backbone.named_parameters():
+            if not 'bn' in name and not 'IC' in name:
+                # grads_j.append(params.grad.clone().detach().cpu().view(-1))
+                params_dim += len(params.view(-1))
         if current_set:
-            classwise_loss = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
-            classwise_grad = {x:list() for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_loss = {x:0 for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_grad = {x:torch.zeros(params_dim) for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
+            classwise_count = {x:0 for x in self.benchmark.class_idx[(task_id-1)*inc_num:task_id*inc_num]}
         else:
-            classwise_loss = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
-            classwise_grad = {x:list() for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_loss = {x:0 for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_grad = {x:torch.zeros(params_dim) for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+            classwise_count = {x:0 for x in self.benchmark.class_idx[:(task_id-1)*inc_num]}
+
         new_grads, grads = None, None
+        accmulated_dg, accmulated_ldg = None, None
         
         loaded_batch = list()
         self.backbone.eval()
@@ -35,7 +44,7 @@ class Heuristic2(Heuristic):
         for batch_idx, items in enumerate(loader):
             # self.backbone.forward
             inp, targ, t_id, *_ = items
-            if current_set:
+            if return_grad:
                 loaded_batch.append(copy.deepcopy(items))
             inp, targ, t_id  = inp.to(device), targ.to(device), t_id.to(device)
             pred, embeds = self.backbone.forward_embeds(inp, t_id)
@@ -49,7 +58,6 @@ class Heuristic2(Heuristic):
                 """
                 This requires gradient to be matmul every batch.
                 Otherwise needed memory would be larger
-                
                 """
                 batch_size = inp.shape[0]
                 grads = list()
@@ -65,13 +73,12 @@ class Heuristic2(Heuristic):
                     grads_j = torch.cat(grads_j)
                     grads.append(grads_j)
                 grads = torch.stack(grads, dim=0)
-                if current_set:
-                    print(f"{targ=}")
-                    print(f"{grads=}")
-                    n_grads = F.normalize(grads, p=2, dim=1)
-                    print(f"{n_grads=}")
-
                 # print(f"{batch_idx=}")
+                if return_grad:
+                    n_grads = F.normalize(grads, p=2, dim=1)
+                    dg = torch.matmul(configs['d'].T, n_grads.T)
+                    ldg = torch.matmul(configs['ld'].T, n_grads.T)
+
             else:
                 bias_grads = torch.autograd.grad(loss.mean(), pred)[0]
                 bias_expand = torch.repeat_interleave(bias_grads, embeds.shape[1], dim=1)
@@ -80,15 +87,27 @@ class Heuristic2(Heuristic):
                 grads = grads.clone().detach().cpu()
 
             for i, e in enumerate(targ):
-                classwise_loss[e.cpu().item()].append(loss[i].detach().cpu()) # to prevent memory overflow
+                classwise_loss[e.cpu().item()] += loss[i].detach().cpu() # to prevent memory overflow
                 # classwise_loss[e.cpu().item()].append(grads[i].detach().cpu()) # to prevent memory overflow
-                classwise_grad[e.cpu().item()].append(grads[i])
+                classwise_grad[e.cpu().item()] += grads[i]
+                classwise_count[e.cpu().item()] += 1
 
-            if current_set:
-                new_grads = grads if new_grads is None else torch.cat([new_grads, grads])
+            if return_grad:
+                if self.params.get('all_layer_gradient', False):
+                    accmulated_dg = dg if accmulated_dg is None else torch.cat([accmulated_dg, dg], dim=1)
+                    accmulated_ldg = ldg if accmulated_ldg is None else torch.cat([accmulated_ldg, ldg], dim=1)
+                else:
+                    new_grads = grads if new_grads is None else torch.cat([new_grads, grads])
 
             self.backbone.zero_grad()
-            
+        
+        for k, v in classwise_count.items():
+            classwise_loss[k] = (classwise_loss[k]/v).view(1, -1)
+            classwise_grad[k] = (classwise_grad[k]/v).view(1, -1)
+        
+        if return_grad and self.params.get('all_layer_gradient', False):
+            new_grads = [accmulated_dg, accmulated_ldg]
+
         return classwise_loss, classwise_grad, new_grads, loaded_batch
     
     def get_loss_grad_all(self, task_id):
@@ -96,7 +115,8 @@ class Heuristic2(Heuristic):
         classwise_loss, classwise_grad, *_ = self.get_loss_grad(task_id, self.episodic_memory_loader, current_set = False)
         train_loader = self.benchmark.load(task_id, self.params['batch_size_train'], shuffle=True,
                                    num_workers=num_workers, pin_memory=True)[0]
-        current_loss, current_grad, new_grads, new_batch = self.get_loss_grad(task_id, train_loader, current_set = True)
+        current_loss, current_grad, *_ = self.get_loss_grad(task_id, train_loader, current_set = True)
+        print(f"get_loss_grad done")
         classwise_loss.update(current_loss)
         classwise_grad.update(current_grad)
 
@@ -106,26 +126,34 @@ class Heuristic2(Heuristic):
             v3 = classwise_grad[k]
             # loss_ = torch.stack(v).mean(dim=0).view(1, -1).detach().clone()
             # grads_ = torch.stack(v3).mean(dim=0).view(1, -1).detach().clone()
-            loss_ = torch.stack(v).mean(dim=0).view(1, -1)
-            grads_ = torch.stack(v3).mean(dim=0).view(1, -1)
-            losses.append(loss_)
-            grads.append(grads_)
+            losses.append(v)
+            grads.append(v3)
 
         with torch.no_grad():
             losses = torch.cat(losses, dim=0).view(1,-1)
             grads_all = torch.cat(grads, dim=0)
-            self.classwise_mean_grad.append(torch.norm(grads_all, dim=1))
+            self.classwise_mean_grad.append(torch.norm(grads_all, dim=1)) # for plotting (debug)
             
             # class/group별로 변화량이 비슷하도록 normalize
             if self.params.get('no_class_grad_norm', False):
                 n_grads_all = grads_all
             else:
                 n_grads_all = F.normalize(grads_all, p=2, dim=1) # (num_class) * (weight&bias 차원수)
-            if self.params.get('no_datapoints_grad_norm', False):
-                n_new_grads = new_grads
-            else:
-                n_new_grads = F.normalize(new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
+            # print(f"{n_grads_all.shape=}")
 
+        configs = self.converter_LP_upper(losses, self.alpha, n_grads_all, task=task_id)
+        *_, new_grads, new_batch = self.get_loss_grad(task_id, train_loader, current_set = True, return_grad= True, configs=configs)
+        if self.params.get('all_layer_gradient', False):
+            dg, ldg = new_grads
+            configs['dg'] = dg
+            configs['ldg'] = ldg
+            n_new_grads = configs
+        else:
+            with torch.no_grad():
+                if self.params.get('no_datapoints_grad_norm', False):
+                    n_new_grads = new_grads
+                else:
+                    n_new_grads = F.normalize(new_grads, p=2, dim=1) # (후보수) * (weight&bias 차원수)
         return losses, n_grads_all, n_new_grads, new_batch
 
     def converter_LS(self, losses, alpha, grads_all, new_grads, task=None):
@@ -153,6 +181,58 @@ class Heuristic2(Heuristic):
         dg = torch.matmul(d.T, new_grads.T)
         dg, c = dg/(n**2), c/(n**2)
         return dg, c
+
+    def converter_LP_upper(self, losses, alpha, grads_all, task=None):
+        device = 'cpu'
+        num_current_classes = self.get_num_current_classes(task)
+        losses = torch.transpose(losses, 0, 1)
+        grads_all = torch.transpose(grads_all, 0, 1) # (weight&bias 차원수) * (num_class)
+        
+        n = len(losses)
+
+        c = torch.zeros_like(losses, device=device)
+        d = torch.zeros_like(grads_all, device=device)
+
+        lc = torch.zeros([n, 1], device=device)
+        ld = torch.zeros([grads_all.shape[0], n], device=device)
+
+        for j in range(n):
+            c[j] = n*losses[j] - losses.sum()
+            d[:,j] = n*grads_all[:,j] - grads_all.sum(axis=1)
+
+            lc[j] = losses[j]
+            ld[:,j] = grads_all[:,j]
+
+        d = alpha*d
+        ld = alpha*ld
+
+        configs = dict()
+        configs['c'], configs['d'], configs['lc'], configs['ld'] = c, d, lc, ld
+        return configs
+
+    def converter_LP_lower(self, configs, losses, alpha, task=None):
+        losses = torch.transpose(losses, 0, 1)
+        n = len(losses)
+        num_current_classes = self.get_num_current_classes(task)
+
+        dg = configs['dg']
+        c = configs['c']
+
+        dg, c = dg/(n**2), c/(n**2)
+
+        lmbd = self.params.get('lambda', 0.0)
+        lmbd_old = self.params.get('lambda_old', 0.0)
+
+        ldg = configs['ldg']
+        lc = configs['lc']
+
+        ldg, lc = lmbd*ldg, lmbd*lc
+
+        ldg[:n-num_current_classes] = lmbd_old*ldg[:n-num_current_classes]/(n-num_current_classes)
+        ldg[n-num_current_classes:] = ldg[n-num_current_classes:]/num_current_classes
+        lc[:n-num_current_classes] = lmbd_old*lc[:n-num_current_classes]/(n-num_current_classes)
+        lc[n-num_current_classes:] = lc[n-num_current_classes:]/num_current_classes
+        return dg, c, ldg, lc
 
     def converter_LP_absolute_additional(self, losses, alpha, grads_all, new_grads, task=None):
         """

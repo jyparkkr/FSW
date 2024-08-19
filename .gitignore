@@ -1,8 +1,11 @@
+_*/
 outputs/*
 scripts_output/*
+outputs_rebuttal/*
+scripts_output_rebuttal/*
 outputs_backup/*
 scripts/temp/*
-scripts/prev/*
+scripts/prev*/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -7,16 +7,17 @@ TAU=5
 ALPHA=0.002
 LAMBDA=0.01
 VERBOSE=2
-METHOD="joint"
+METHOD="vanilla"
+METHOD="FSW"
 
 cnt=0
-for SEED in {0..4}; do
-# for SEED in 10; do
+# for SEED in {0..4}; do
+for SEED in 0; do
 for EPOCH in 50; do
-for TAU in 0.0; do
-for LR in 0.1 0.01 0.001; do
-for ALPHA in 0.0; do
-for LAMBDA in 0.0; do
+for TAU in 2.0; do
+for LR in 0.01; do
+for ALPHA in 0.005; do
+for LAMBDA in 0.1; do
     if [[ $DATASET == "MNIST" ]]; then
         MODEL="MLP"
         NUM_TASK=5
@@ -39,7 +40,7 @@ for LAMBDA in 0.0; do
         MODEL="resnet18"
         NUM_TASK=5
         PER_TASK_CLASS=2
-        BUFFER_PER_CLASS=256
+        BUFFER_PER_CLASS=32
         METRIC="no_metrics"
     else
         ROOT="resnet18"
@@ -92,7 +93,7 @@ for LAMBDA in 0.0; do
                            --alpha $ALPHA \
                            --lambda $LAMBDA \
                            --lambda_old 0 \
-                           --cuda 7 \
+                           --cuda 5 \
                            --verbose $VERBOSE \
                         #    1> $LOG_STDOUT 2> $LOG_STDERR
 done

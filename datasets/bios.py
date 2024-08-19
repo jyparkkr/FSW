@@ -1,3 +1,5 @@
+# Need to download *.pkl files first to load bios
+
 import torchvision
 import torch
 from typing import Any, Callable, Tuple, Optional, Dict, List

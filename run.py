@@ -13,18 +13,15 @@ from configs import parse_option, make_params, datasets, fairness_datasets
 def main():
     opt = parse_option()
     seed = opt.seed
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    np.random.seed(seed)
     random.seed(seed) 
-    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
-    torch.set_num_threads(6)
-    torch.backends.cudnn.enabled = False
     torch.backends.cudnn.benchmark = False
-
+    torch.backends.cudnn.enabled = False
+    torch.set_num_threads(4)
 
     if opt.cuda is not None:
         torch.cuda.set_device(opt.cuda)

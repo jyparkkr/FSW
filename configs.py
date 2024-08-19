@@ -20,6 +20,8 @@ def parse_option():
                         help='Seed for torch and np.')
     parser.add_argument('--method', type=str, default="FSW", choices=method_pool,
                         help='Seed for torch and np.')
+    parser.add_argument('--rebuttal', action='store_true',
+                        help='while rebuttal')
 
     # benchmark
     parser.add_argument('--num_tasks', type=int, default=5, metavar='N',
@@ -73,6 +75,12 @@ def parse_option():
     parser.add_argument('--verbose', type=int, default=1, choices=[0, 1, 2, 3],
                         help='0 -> 1 -> 2 -> 3')
 
+    # post_process
+    parser.add_argument('--post_processing', type=str, default="", choices=["", "eps_fairness"],
+                        help='type of applying post-processing techniques')
+    parser.add_argument('--pp_eps', type=float, default=0.0,
+                        help='Hyperparameter of eps-fairness.')
+
     opt = parser.parse_args()
 
     # raise NotImplemented
@@ -97,12 +105,16 @@ def make_params(args) -> dict:
     else:
         params['device'] = torch.device('cpu')
     params['criterion'] = torch.nn.CrossEntropyLoss()
-    if params['method'] == "iCaRL":
+    if "iCaRL" in params['method']:
         params['criterion'] = torch.nn.BCEWithLogitsLoss()
     trial_id = f"dataset={params['dataset']}"
 
     if params['random_class_idx']:
         trial_id+="_randidx"
+
+    # post processing
+    if params['post_processing'] == "":
+        params['post_processing'] = False
 
     # define method
     if params['method'] == 'joint':
@@ -111,7 +123,11 @@ def make_params(args) -> dict:
         
     elif params['method'] == 'finetune':
         params['tau'] == 0
+
     trial_id = os.path.join(trial_id, f"{params['method']}")
+    if params['post_processing']:
+        trial_id+=f"_{params['post_processing']}"
+
     if params['all_layer_gradient']:
         trial_id+="_ALLGRAD"
 
@@ -148,8 +164,18 @@ def make_params(args) -> dict:
 
     if params['lambda'] != 0:
         trial_id+=f"_lmbd={params['lambda']}_lmbdold={params['lambda_old']}"
+
+    if params['pp_eps'] != 0:
+        trial_id+=f"_eps={params['pp_eps']}"
+
+
     params['trial_id'] = trial_id
     params['output_dir'] = os.path.join("./outputs/{}".format(trial_id))
+    if params['rebuttal']:
+        print("##REBUTTAL PERIOD##")
+        params['output_dir'] = os.path.join("./outputs_rebuttal/{}".format(trial_id))
+
+
     if args.verbose > 1:
         print(f"output_dir={params['output_dir']}")
     Path(params['output_dir']).mkdir(parents=True, exist_ok=True)
