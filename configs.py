@@ -68,7 +68,9 @@ def parse_option():
                         help='Hyperparameter of old class loss for sample selection problem.')
     parser.add_argument('--all_layer_gradient', action='store_true',
                         help='use gradient of all layers (only use last layer if false)')
-    
+    parser.add_argument('--optim_version', type=str, default="v0", choices=["v0", "v1", "v2"],
+                        help='optimization goal')
+
     # etc
     parser.add_argument('--cuda', type=int, default=0,
                         help='cuda device.')
@@ -158,6 +160,7 @@ def make_params(args) -> dict:
     # contain alpha for current data selection
     if params['method'] in ["FSS", "FSW"]: 
         trial_id += f"_alpha={params['alpha']}"
+        trial_id += f"_optim={params['optim_version']}"
     
     # if params['alpha_decay']:
     #     trial_id += f"_decay"

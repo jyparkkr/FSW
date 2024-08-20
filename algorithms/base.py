@@ -160,24 +160,25 @@ class Heuristic(ContinualAlgorithm):
         self.non_select_indexes = list(range(len(self.benchmark.seq_indices_train[task_id])))
 
         grad_start_time = time.time()
-        losses, n_grads_all, n_r_new_grads, new_batch = self.get_loss_grad_all(task_id) 
+        loss_group, grad_group, grad_data, new_batch = self.get_loss_grad_all(task_id) 
+        grad_data_prev, grad_data_current = grad_data
 
-        # n_grads_all: (class_num) * (weight&bias 차원수)
-        # n_r_new_grads: (current step data 후보수) * (weight&bias 차원수) \ all_layer_gradient 일경우 configs
+        # grad_group: (class_num) * (weight&bias 차원수)
+        # grad_data_current: (current step data 후보수) * (weight&bias 차원수) \ all_layer_gradient 일경우 configs
         if self.alpha == 0:
             return self.benchmark.load(task_id, self.params['batch_size_train'],
                                     num_workers=num_workers, pin_memory=True)[0]
 
-        print(f"{losses=}")
-        # print(f"{n_grads_all.mean(dim=1)=}")
+        print(f"{loss_group=}")
+        # print(f"{grad_group.mean(dim=1)=}")
         
         if self.params.get('alpha_decay', False) and epoch in self.params.get('learning_rate_decay_epoch', []): # decay
             self.alpha = self.alpha / 10
         if not self.params.get('all_layer_gradient', False) or self.params.get('old', False):
-            converter_out = self.converter(losses, self.alpha, n_grads_all, n_r_new_grads, task=task_id)
+            converter_out = self.converter(loss_group, self.alpha, grad_group, grad_data_current, task=task_id, grad_data_prev=grad_data_prev)
         else:
-            configs = n_r_new_grads
-            converter_out = self.converter_LP_lower(configs, losses, self.alpha, task=task_id)
+            configs = grad_data_current
+            converter_out = self.converter_LP_lower(configs, loss_group, self.alpha, task=task_id)
         optim_in = list()
         for i, e in enumerate(converter_out):
             if i % 2 == 0:
@@ -199,13 +200,13 @@ class Heuristic(ContinualAlgorithm):
 
         print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
         if self.debug:
-            group_loss = losses # (group_num)
-            group_grad = n_grads_all # (group_num) * (weight&bias 차원수)
-            data_grad = n_r_new_grads.T # (weight&bias 차원수) * (current step data 후보수)
+            group_loss = loss_group # (group_num)
+            group_grad = grad_group # (group_num) * (weight&bias 차원수)
+            data_grad = grad_data_current.T # (weight&bias 차원수) * (current step data 후보수)
             weight_torch = torch.Tensor(weight)
             expected_loss = group_loss - self.alpha * torch.matmul(group_grad, torch.matmul(data_grad, weight_torch))
             self.expected_loss[self.current_task][epoch] = expected_loss
-            # self.true_loss[self.current_task][epoch-1] = losses
+            # self.true_loss[self.current_task][epoch-1] = loss_group
             print(f"Current class expected loss:{expected_loss}")
 
         tensor_weight = torch.tensor(np.array(weight), dtype=torch.float32)
@@ -302,8 +303,8 @@ class Heuristic(ContinualAlgorithm):
                 loss.backward()
                 optimizer.step()
             # training done
-            losses = self.measure_loss(task_id, dummy_backbone) 
-            self.true_loss[self.current_task][epoch] = losses
+            loss_group = self.measure_loss(task_id, dummy_backbone) 
+            self.true_loss[self.current_task][epoch] = loss_group
             print("temporal training done")
 
         return train_loader

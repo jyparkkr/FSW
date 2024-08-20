@@ -10,6 +10,8 @@ from typing import Optional, Tuple, List
 from .mnist import MNIST
 from .base import SplitDataset1, SplitDataset3, SplitDataset4
 from cl_gym.benchmarks.utils import DEFAULT_DATASET_DIR
+from torch.utils.data import Subset
+
 
 COLOR_MAP = {
     0: (1, 0, 0),
@@ -55,6 +57,16 @@ class BiasedMNIST(MNIST):
             task_input_transforms = get_default_biased_mnist_transform(num_tasks)
         super().__init__(num_tasks, per_task_examples, per_task_joint_examples, per_task_memory_examples, per_task_subset_examples,
                          task_input_transforms, task_target_transforms, joint=joint, random_class_idx=random_class_idx)
+        self._calculate_yz_num(self.mnist_train)
+
+    def load_datasets(self):
+        self.__load_mnist()
+        for task in range(1, self.num_tasks + 1):
+            train_task = task
+            if self.joint:
+                train_task = [t for t in range(1, task+1)]
+            self.trains[task] = SplitDataset4(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
+            self.tests[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
 
     def __load_mnist(self):
         self.transform = self.task_input_transforms[0]
@@ -67,33 +79,17 @@ class BiasedMNIST(MNIST):
         self.mnist_train = mnist_train
         self.mnist_test = mnist_test
 
-        self._calculate_yz_num(self.mnist_train)
-
     def _calculate_yz_num(self, dataset):
-        sen = dataset.sensitives
-        targ = dataset.targets
-        # m_dict = {s:[0 for c in self.class_idx] for s in np.unique(sen)}
-        # for i, e in enumerate(sen):
-        #     m_dict[e][targ[i]]+=1
-
-        # this is for BiasedMNIST
         m_dict = {s:[0 for c in self.class_idx] for s in [0, 1]}
-        for i, e in enumerate(sen):
-            if e == targ[i]:
-                m_dict[0][targ[i]]+=1
-            else:
-                m_dict[1][targ[i]]+=1
-        # key is sen
-        self.m_dict = m_dict 
-
-    def load_datasets(self):
-        self.__load_mnist()
         for task in range(1, self.num_tasks + 1):
-            train_task = task
-            if self.joint:
-                train_task = [t for t in range(1, task+1)]
-            self.trains[task] = SplitDataset4(train_task, self.num_classes_per_split, self.mnist_train, class_idx=self.class_idx)
-            self.tests[task] = SplitDataset4(task, self.num_classes_per_split, self.mnist_test, class_idx=self.class_idx)
+            dset = Subset(self.trains[task], self.seq_indices_train[task])
+            for i in range(len(dset)):
+                img, target, task_id, index, sample_weight, sen = dset[i]
+                if sen == target: # this is for BiasedMNIST
+                    m_dict[0][target]+=1
+                else:
+                    m_dict[1][target]+=1
+        self.m_dict = m_dict
 
     def _modify_dataset(self, dataset, s0_rate):
         if s0_rate < 0.1:

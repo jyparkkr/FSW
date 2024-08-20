@@ -1,9 +1,6 @@
 _*/
-outputs/*
-scripts_output/*
-outputs_rebuttal/*
-scripts_output_rebuttal/*
-outputs_backup/*
+outputs*/*
+scripts_output*/*
 scripts/temp/*
 scripts/prev*/*
 

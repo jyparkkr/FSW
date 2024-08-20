@@ -167,14 +167,32 @@ def main():
     for metric in metric_manager_callback.meters:
         if metric in fairness_metrics:
             metric_manager_callback.meters[metric].agg = agg
+
+    # optimization goal vertion
+    if params['optim_version'] == "v0":
+        pass
+    else:
+        from algorithms.optimization import absolute_and_nonabsolute_minsum_LP_solver
+        params['solver'] = absolute_and_nonabsolute_minsum_LP_solver
+        converter = "converter_LP_absolute_additional"+"_"
+        if params['metric'] in ["EO", "DP"]:
+            converter += params['metric']
+            converter += "_"
+        converter += params['optim_version']
+        params['converter'] = getattr(algorithm, converter)
             
     # run & save & log metrics
     trainer.run()
+    
     print(f"accuracy:{np.mean(metric_manager_callback.meters['accuracy'].compute_overall())}")
     for metric in metric_manager_callback.meters:
         if metric in fairness_metrics:
             print(f"{metric}:\n{np.mean(metric_manager_callback.meters[metric].compute_overall())}")        
 
+    # remove unpickled objects
+    params['solver'] = ""
+    params['converter'] = ""
+    
     with open(os.path.join(params['output_dir'], 'metrics', 'metrics.pickle'), "wb") as f:
         pickle.dump(metric_manager_callback, f)
 
