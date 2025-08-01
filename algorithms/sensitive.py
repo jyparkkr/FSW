@@ -473,7 +473,7 @@ class Heuristic3(Heuristic):
         grad_group = torch.transpose(grad_group, 0, 1) # (num_class) * (weight&bias dim)
 
         loss_group2 = torch.transpose(loss_group2, 0, 1)
-        grad_group2 = torch.transpose(grad_group2, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group2 = torch.transpose(grad_group2, 0, 1) # (weight&bias dimensions) * (num_class)
 
         n = len(loss_group)//2
         # m, dim = grad_data.shape
@@ -602,7 +602,7 @@ class Heuristic3(Heuristic):
         grad_group = torch.transpose(grad_group, 0, 1) # (num_class) * (weight&bias dim)
 
         loss_group2 = torch.transpose(loss_group2, 0, 1)
-        grad_group2 = torch.transpose(grad_group2, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group2 = torch.transpose(grad_group2, 0, 1) # (#weight&bias) * (num_class)
 
         n = len(loss_group)//2
         def m_y_z(y, z):
@@ -861,7 +861,7 @@ class Heuristic3(Heuristic):
 
         d = torch.zeros([n, 1], device=device)
         classwise_grads = torch.zeros([grad_group.shape[0], n], device=device)
-        
+
         for j in range(n):
             if not j >= num_past_classes:
                 b[j] = (m_y_z(j, 0) / m_z(0) * loss_group[j] - m_y_z(j, 1) / m_z(1) * loss_group[n+j])/2 # |Z|=2
@@ -919,25 +919,25 @@ class Heuristic3(Heuristic):
         if solver is None:
             if metric == "EO" or metric is None:
                 if fairloss_type == "CE":
-                    if agg == "mean" or agg is None:
-                        solver = absolute_and_nonabsolute_minsum_LP_solver
-                        self.converter = self.converter_LP_absolute_additional_EO
-                    elif agg == "max":
-                        raise NotImplementedError
-                        solver = absolute_minimax_LP_solver
-                        self.converter = self.converter_LP_absolute_only_EO
-                    else:
-                        raise NotImplementedError
+                if agg == "mean" or agg is None:
+                    solver = absolute_and_nonabsolute_minsum_LP_solver
+                    self.converter = self.converter_LP_absolute_additional_EO
+                elif agg == "max":
+                    raise NotImplementedError
+                    solver = absolute_minimax_LP_solver
+                    self.converter = self.converter_LP_absolute_only_EO
+                else:
+                    raise NotImplementedError
                 else:
                     solver = absolute_and_nonabsolute_minsum_LP_solver
                     self.converter = self.converter_LP_absolute_additional_EO_diffloss
             elif metric == "DP":
                 if fairloss_type == "CE":
-                    if agg == "mean" or agg is None:
-                        solver = absolute_and_nonabsolute_minsum_LP_solver
-                        self.converter = self.converter_LP_absolute_additional_DP
-                    else:
-                        raise NotImplementedError
+                if agg == "mean" or agg is None:
+                    solver = absolute_and_nonabsolute_minsum_LP_solver
+                    self.converter = self.converter_LP_absolute_additional_DP
+                else:
+                    raise NotImplementedError
                 else:
                     solver = absolute_and_nonabsolute_minsum_LP_solver
                     self.converter = self.converter_LP_absolute_additional_DP_diffloss

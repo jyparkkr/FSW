@@ -273,7 +273,7 @@ class Heuristic2(Heuristic):
                 grads = list()
                 for j in range(batch_size):
                     loss[j].backward(retain_graph=True)
-                    # parameters named_parameter로 loop 돌리기
+                    # parameters named_parameter loop
                     grads_j = list()
                     for name, params in model.named_parameters():
                         if not 'bn' in name and not 'IC' in name:
@@ -338,7 +338,7 @@ class Heuristic2(Heuristic):
         min_x (Ax - b)^2
         """
         loss_group = torch.transpose(loss_group, 0, 1)
-        grad_group = torch.transpose(grad_group, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group = torch.transpose(grad_group, 0, 1) # (#weight&bias) * (num_class)
         
         n = len(loss_group)
         m, dim = grad_data.shape
@@ -374,7 +374,7 @@ class Heuristic2(Heuristic):
         device = 'cpu'
         num_current_classes = self.get_num_current_classes(task)
         loss_group = torch.transpose(loss_group, 0, 1)
-        grad_group = torch.transpose(grad_group, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group = torch.transpose(grad_group, 0, 1) # (#weight&bias) * (num_class)
         
         n = len(loss_group)
         m, dim = grad_data.shape
@@ -439,10 +439,10 @@ class Heuristic2(Heuristic):
         grad_group, grad_group2 = grad_group
 
         loss_group = torch.transpose(loss_group, 0, 1)
-        grad_group = torch.transpose(grad_group, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group = torch.transpose(grad_group, 0, 1) # (#weight&bias) * (num_class)
 
         loss_group2 = torch.transpose(loss_group2, 0, 1)
-        grad_group2 = torch.transpose(grad_group2, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group2 = torch.transpose(grad_group2, 0, 1) # (#weight&bias) * (num_class)
 
         n = len(loss_group)
         m, dim = grad_data.shape
@@ -507,7 +507,7 @@ class Heuristic2(Heuristic):
         device = 'cpu'
         num_current_classes = self.get_num_current_classes(task)
         loss_group = torch.transpose(loss_group, 0, 1)
-        grad_group = torch.transpose(grad_group, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group = torch.transpose(grad_group, 0, 1) # (#weight&bias) * (num_class)
         grad_data_prev = kwargs['grad_data_prev']
         tau = self.params['tau']
         
@@ -559,7 +559,7 @@ class Heuristic2(Heuristic):
         device = 'cpu'
         num_current_classes = self.get_num_current_classes(task)
         loss_group = torch.transpose(loss_group, 0, 1)
-        grad_group = torch.transpose(grad_group, 0, 1) # (weight&bias 차원수) * (num_class)
+        grad_group = torch.transpose(grad_group, 0, 1) # (#weight&bias) * (num_class)
         
         n = len(loss_group)
         m, dim = grad_data.shape

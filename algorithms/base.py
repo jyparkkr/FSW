@@ -223,8 +223,8 @@ class Heuristic(ContinualAlgorithm):
         print(f"Fairness:{np.matmul(optim_in[0], weight)-optim_in[1]}")
         # if self.debug:
         group_loss = loss_group # (group_num)
-        group_grad = grad_group # (group_num) * (weight&bias 차원수)
-        data_grad = grad_data_current.T # (weight&bias 차원수) * (current step data 후보수)
+        group_grad = grad_group # (group_num) * (#weight&bias)
+        data_grad = grad_data_current.T # (#weight&bias) * (#current step data candidates)
         weight_torch = torch.Tensor(weight)
         expected_loss = group_loss - self.alpha * torch.matmul(group_grad, torch.matmul(data_grad, weight_torch))
         self.expected_loss[self.current_task][epoch] = expected_loss

@@ -126,7 +126,7 @@ class BiasedMNIST(MNIST):
                 color[2] + sigma * np.random.standard_normal())
 
     def sample_fair_uniform_class_indices(self, dataset, start_class_idx, end_class_idx, num_samples) -> List:
-        sen_rate = 0.5 # 0.5: 반반, 0.1: 모두 똑같게
+        sen_rate = 0.5 # 0.5: half-half, 0.1: all same
 
         num_classes = len(self.class_idx)
         target_classes = dataset.targets

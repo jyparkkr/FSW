@@ -113,7 +113,7 @@ class BaseContinualTrainer(cl.trainer.ContinualTrainer):
                 X_train, targets, sens, probs = list(), list(), list(), list()
                 for items in train_loader:
                     item_to_devices = [item.to(device) if isinstance(item, torch.Tensor) else item for item in items]
-                    # TODO: CIFAR이상 dataset에 대해서는 test_transform을 적용해주어야 함
+                    # TODO: For datasets above CIFAR, test_transform should be applied
                     inp, targ, task_ids, _, _, sensitive_label, *_ = item_to_devices
                     if isinstance(inp, list):
                         inp = [x.to(device) for x in inp]
